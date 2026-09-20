@@ -1,0 +1,1601 @@
+outlet,group,estimated_country,domain_country,basis,broad,both,only_pair,only_pair_specific,specific_kenya
+news.cn,Chinese,CH,CH,estimate_domain_agree,126,44,15,15,90
+163.com,Chinese,CH,,estimate_only,71,63,2,0,15
+wenxuecity.com,Chinese,CH,,estimate_only,49,39,2,0,3
+chinadaily.com.cn,Chinese,CH,CH,estimate_domain_agree,43,38,4,4,19
+people.com.cn,Chinese,CH,CH,estimate_domain_agree,42,41,3,0,15
+china.org.cn,Chinese,CH,CH,estimate_domain_agree,32,10,4,4,25
+dahe.cn,Chinese,CH,CH,estimate_domain_agree,28,28,1,0,12
+qianlong.com,Chinese,CH,,estimate_only,22,22,2,0,10
+shanghaisun.com,Chinese,CH,,estimate_only,22,22,8,8,17
+yangtse.com,Chinese,CH,,estimate_only,22,22,0,0,10
+qq.com,Chinese,CH,,estimate_only,20,20,0,0,9
+ycwb.com,Chinese,CH,,estimate_only,19,19,0,0,7
+sina.com.cn,Chinese,CH,CH,estimate_domain_agree,18,13,1,0,2
+workercn.cn,Chinese,CH,CH,estimate_domain_agree,18,18,0,0,8
+xinhuanet.com,Chinese,CH,,estimate_only,18,15,3,0,2
+chinesepress.com,Chinese,CH,,estimate_only,16,14,0,0,3
+dayoo.com,Chinese,CH,,estimate_only,16,16,0,0,6
+itbear.com.cn,Chinese,CH,CH,estimate_domain_agree,16,6,3,0,0
+voc.com.cn,Chinese,CH,CH,estimate_domain_agree,16,16,1,0,4
+china.com.cn,Chinese,CH,CH,estimate_domain_agree,15,15,0,0,9
+ifeng.com,Chinese,CH,,estimate_only,15,12,1,0,2
+fjsen.com,Chinese,CH,,estimate_only,14,14,0,0,2
+china.com,Chinese,CH,,estimate_only,13,9,1,1,3
+gmw.cn,Chinese,CH,CH,estimate_domain_agree,13,13,1,1,6
+shm.com.cn,Chinese,CH,CH,estimate_domain_agree,13,13,0,0,6
+cyol.com,Chinese,CH,,estimate_only,12,12,0,0,7
+jschina.com.cn,Chinese,CH,CH,estimate_domain_agree,12,12,0,0,7
+kmzx.org,Chinese,CH,,estimate_only,12,11,1,0,1
+people.cn,Chinese,CH,CH,estimate_domain_agree,12,12,5,5,7
+peopledaily.com.cn,Chinese,CH,CH,estimate_domain_agree,12,9,2,0,1
+cnwest.com,Chinese,CH,,estimate_only,11,11,0,0,7
+globalvoices.org,Chinese,CH,,estimate_only,11,1,0,0,4
+huxiu.com,Chinese,CH,,estimate_only,10,10,0,0,0
+epochtimes.com,Chinese,CH,,estimate_only,8,6,0,0,0
+hangzhou.com.cn,Chinese,CH,CH,estimate_domain_agree,8,7,0,0,1
+hinews.cn,Chinese,CH,CH,estimate_domain_agree,8,8,0,0,4
+sxdaily.com.cn,Chinese,CH,CH,estimate_domain_agree,8,8,0,0,2
+chinanews.com.cn,Chinese,CH,CH,estimate_domain_agree,7,7,0,0,2
+northnews.cn,Chinese,CH,CH,estimate_domain_agree,7,7,0,0,1
+tmtpost.com,Chinese,CH,,estimate_only,7,7,0,0,1
+universityworldnews.com,Chinese,CH,,estimate_only,7,1,0,0,2
+cnfol.com,Chinese,CH,,estimate_only,6,3,0,0,2
+cnr.cn,Chinese,CH,CH,estimate_domain_agree,6,5,0,0,4
+southcn.com,Chinese,CH,,estimate_only,6,6,0,0,2
+wenweipo.com,Chinese,CH,,estimate_only,6,4,0,0,0
+81.cn,Chinese,CH,CH,estimate_domain_agree,5,5,0,0,2
+eastmoney.com,Chinese,CH,,estimate_only,5,4,0,0,2
+electroiq.com,Chinese,CH,,estimate_only,5,2,0,0,0
+fruitnet.com,Chinese,CH,,estimate_only,5,0,0,0,1
+nmgnews.com.cn,Chinese,CH,CH,estimate_domain_agree,5,5,1,0,1
+qstheory.cn,Chinese,CH,CH,estimate_domain_agree,5,5,0,0,0
+scmp.com,Chinese,CH,,estimate_only,5,1,0,0,0
+stdaily.com,Chinese,CH,,estimate_only,5,5,0,0,0
+21xc.com,Chinese,CH,,estimate_only,4,4,0,0,2
+aboluowang.com,Chinese,CH,,estimate_only,4,3,0,0,0
+archdaily.com,Chinese,CH,,estimate_only,4,1,0,0,3
+chinaqw.com,Chinese,CH,,estimate_only,4,4,0,0,3
+hellenicshippingnews.com,Chinese,CH,,estimate_only,4,2,0,0,1
+jzrb.com,Chinese,CH,,estimate_only,4,4,1,0,1
+singaporestar.com,Chinese,CH,,estimate_only,4,1,0,0,1
+singtaousa.com,Chinese,CH,,estimate_only,4,3,0,0,0
+sqrb.com.cn,Chinese,CH,CH,estimate_domain_agree,4,3,1,0,2
+stcn.com,Chinese,CH,,estimate_only,4,4,0,0,3
+xxrb.com.cn,Chinese,CH,CH,estimate_domain_agree,4,4,1,0,2
+banyuetan.org,Chinese,CH,,estimate_only,3,3,0,0,0
+bjnews.com.cn,Chinese,CH,CH,estimate_domain_agree,3,3,0,0,1
+bjreview.com,Chinese,CH,,estimate_only,3,3,0,0,1
+ce.cn,Chinese,CH,CH,estimate_domain_agree,3,2,0,0,2
+donews.com,Chinese,CH,,estimate_only,3,3,0,0,0
+farmer.com.cn,Chinese,CH,CH,estimate_domain_agree,3,3,0,0,1
+fznews.com.cn,Chinese,CH,CH,estimate_domain_agree,3,3,0,0,1
+globaltimes.cn,Chinese,CH,CH,estimate_domain_agree,3,2,1,1,2
+hkwb.net,Chinese,CH,,estimate_only,3,3,0,0,1
+iqilu.com,Chinese,CH,,estimate_only,3,3,0,0,1
+ixbt.com,Chinese,CH,,estimate_only,3,0,0,0,1
+legaldaily.com.cn,Chinese,CH,CH,estimate_domain_agree,3,3,0,0,2
+oeeee.com,Chinese,CH,,estimate_only,3,3,0,0,0
+pv-magazine.com,Chinese,CH,,estimate_only,3,0,0,0,1
+renminbao.com,Chinese,CH,,estimate_only,3,2,0,0,0
+scol.com.cn,Chinese,CH,CH,estimate_domain_agree,3,3,0,0,1
+sdnews.com.cn,Chinese,CH,CH,estimate_domain_agree,3,3,0,0,2
+thediplomat.com,Chinese,CH,,estimate_only,3,3,0,0,1
+traveldailynews.asia,Chinese,CH,,estimate_only,3,1,0,0,0
+wxrb.com,Chinese,CH,,estimate_only,3,3,0,0,2
+aircargonews.net,Chinese,CH,,estimate_only,2,0,0,0,2
+alwihdainfo.com,Chinese,CH,,estimate_only,2,1,0,0,1
+anhuinews.com,Chinese,CH,,estimate_only,2,2,0,0,1
+bjreview.com.cn,Chinese,CH,CH,estimate_domain_agree,2,2,0,0,1
+caijing.com.cn,Chinese,CH,CH,estimate_domain_agree,2,1,0,0,0
+cfi.net.cn,Chinese,CH,CH,estimate_domain_agree,2,2,0,0,0
+changsha.cn,Chinese,CH,CH,estimate_domain_agree,2,2,0,0,0
+chinaview.cn,Chinese,,CH,domain_only,2,0,0,0,1
+citnews.com.cn,Chinese,CH,CH,estimate_domain_agree,2,2,1,0,0
+cqnews.net,Chinese,CH,,estimate_only,2,2,0,0,1
+dangjian.cn,Chinese,CH,CH,estimate_domain_agree,2,2,0,0,0
+gzstv.com,Chinese,CH,,estimate_only,2,2,0,0,0
+hkcd.com,Chinese,CH,,estimate_only,2,2,0,0,0
+just-style.com,Chinese,CH,,estimate_only,2,1,0,0,1
+jxnews.com.cn,Chinese,CH,CH,estimate_domain_agree,2,2,0,0,1
+minghui.org,Chinese,CH,,estimate_only,2,2,0,0,0
+newsecuritybeat.org,Chinese,CH,,estimate_only,2,1,0,0,0
+ntdtv.com,Chinese,CH,,estimate_only,2,2,0,0,0
+rednet.cn,Chinese,CH,CH,estimate_domain_agree,2,2,1,0,0
+telecomasia.net,Chinese,CH,,estimate_only,2,0,0,0,0
+voachinese.com,Chinese,CH,,estimate_only,2,2,0,0,1
+womenofchina.cn,Chinese,CH,CH,estimate_domain_agree,2,2,0,0,1
+xmnn.cn,Chinese,CH,CH,estimate_domain_agree,2,2,0,0,1
+youth.cn,Chinese,CH,CH,estimate_domain_agree,2,2,0,0,1
+21-sun.com,Chinese,CH,,estimate_only,1,1,1,0,0
+3dmgame.com,Chinese,CH,,estimate_only,1,0,0,0,0
+4hoteliers.com,Chinese,CH,,estimate_only,1,1,0,0,0
+androidheadlines.com,Chinese,CH,,estimate_only,1,1,0,0,0
+asianews.network,Chinese,CH,,estimate_only,1,1,0,0,0
+baidu.com,Chinese,CH,,estimate_only,1,1,0,0,0
+bandao.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+bbtnews.com.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+caixin.com,Chinese,CH,,estimate_only,1,1,0,0,0
+cbg.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+cctv.com,Chinese,CH,,estimate_only,1,1,0,0,0
+centralbanking.com,Chinese,CH,,estimate_only,1,0,0,0,1
+chinadigitaltimes.net,Chinese,CH,,estimate_only,1,1,0,0,1
+chinamil.com.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+chinaz.com,Chinese,CH,,estimate_only,1,1,0,0,0
+ckgsb.edu.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+cnnb.com.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+cs.com.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+dealstreetasia.com,Chinese,CH,,estimate_only,1,0,0,0,0
+dnkb.com.cn,Chinese,CH,CH,estimate_domain_agree,1,0,0,0,0
+economonitor.com,Chinese,CH,,estimate_only,1,0,0,0,0
+eeo.com.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+fanabc.com,Chinese,CH,,estimate_only,1,1,0,0,0
+fareasternagriculture.com,Chinese,CH,,estimate_only,1,0,0,0,0
+farmlandgrab.org,Chinese,CH,,estimate_only,1,0,0,0,0
+fxstreet.com,Chinese,CH,,estimate_only,1,0,0,0,0
+gsmarena.com,Chinese,CH,,estimate_only,1,1,0,0,0
+hkej.com,Chinese,CH,,estimate_only,1,1,0,0,0
+huawei.com,Chinese,CH,,estimate_only,1,0,0,0,0
+hunan.gov.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+insideretail.asia,Chinese,CH,,estimate_only,1,1,0,0,0
+jjxw.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,1
+payloadasia.com,Chinese,CH,,estimate_only,1,0,0,0,1
+peopleapp.com,Chinese,CH,,estimate_only,1,1,0,0,0
+phonearena.com,Chinese,CH,,estimate_only,1,0,0,0,0
+prnasia.com,Chinese,CH,,estimate_only,1,0,0,0,0
+qhrb.com.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,1
+qianzhan.com,Chinese,CH,,estimate_only,1,1,0,0,0
+scirp.org,Chinese,CH,,estimate_only,1,0,0,0,0
+sootoo.com,Chinese,CH,,estimate_only,1,0,0,0,0
+strategypage.com,Chinese,CH,,estimate_only,1,0,0,0,0
+tj.gov.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+tynews.com.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+voacantonese.com,Chinese,CH,,estimate_only,1,1,0,0,0
+xhby.net,Chinese,CH,,estimate_only,1,1,0,0,1
+xnnews.com.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+xxcb.cn,Chinese,CH,CH,estimate_domain_agree,1,1,0,0,0
+yicai.com,Chinese,CH,,estimate_only,1,1,0,0,0
+zsnews.cn,Chinese,CH,CH,estimate_domain_agree,1,1,1,0,0
+standardmedia.co.ke,Local,KE,KE,estimate_domain_agree,137,77,20,16,55
+capitalfm.co.ke,Local,KE,KE,estimate_domain_agree,88,26,14,13,25
+the-star.co.ke,Local,KE,KE,estimate_domain_agree,56,18,5,3,13
+kachwanya.com,Local,KE,,estimate_only,46,31,7,3,14
+tuko.co.ke,Local,KE,KE,estimate_domain_agree,42,8,4,2,4
+techweez.com,Local,KE,,estimate_only,23,2,1,0,0
+kenyan-post.com,Local,KE,,estimate_only,14,1,0,0,1
+kbc.co.ke,Local,KE,KE,estimate_domain_agree,5,2,1,1,2
+techmoran.com,Local,KE,,estimate_only,5,3,0,0,1
+kenyans.co.ke,Local,KE,KE,estimate_domain_agree,4,4,1,0,1
+ghettoradio.co.ke,Local,KE,KE,estimate_domain_agree,2,1,1,1,1
+nairobiwire.com,Local,KE,,estimate_only,2,1,0,0,1
+hapakenya.com,Local,KE,,estimate_only,1,1,0,0,0
+howwemadeitinafrica.com,Local,KE,,estimate_only,1,1,0,0,0
+kahawatungu.com,Local,KE,,estimate_only,1,1,0,0,0
+logupdateafrica.com,Local,KE,,estimate_only,1,0,0,0,0
+pedaids.org,Local,KE,,estimate_only,1,1,0,0,1
+eturbonews.com,Third country,US,,estimate_only,105,105,6,5,51
+yahoo.com,Third country,US,,estimate_only,39,39,0,0,12
+cameroun24.net,Third country,CM,,estimate_only,36,36,0,0,19
+allafrica.com,Third country,NI,,estimate_only,31,31,6,6,18
+wort.lu,Third country,LU,LU,estimate_domain_agree,24,24,0,0,0
+denik.cz,Third country,EZ,EZ,estimate_domain_agree,19,19,0,0,0
+manilatimes.net,Third country,RP,,estimate_only,19,19,0,0,0
+indiatimes.com,Third country,IN,,estimate_only,16,16,0,0,4
+bignewsnetwork.com,Third country,US,,estimate_only,15,15,4,4,8
+inewsgr.com,Third country,GR,,estimate_only,15,15,0,0,3
+cnn.com,Third country,US,,estimate_only,14,14,0,0,2
+elbrqnews.com,Third country,EG,,estimate_only,14,14,0,0,2
+terradaily.com,Third country,US,,estimate_only,14,14,0,0,0
+thestar.com.my,Third country,MY,MY,estimate_domain_agree,13,13,5,5,6
+foreignpolicy.com,Third country,US,,estimate_only,11,11,0,0,2
+nigeriasun.com,Third country,NI,,estimate_only,10,10,0,0,5
+dw.com,Third country,GM,,estimate_only,9,9,0,0,3
+sierraleonetimes.com,Third country,US,,estimate_only,9,9,1,1,4
+cnbcafrica.com,Third country,SF,,estimate_only,8,8,1,1,4
+dailymaverick.co.za,Third country,SF,SF,estimate_domain_agree,8,8,0,0,0
+shorouknews.com,Third country,EG,,estimate_only,8,8,0,0,3
+suncommercial.com,Third country,US,,estimate_only,8,8,0,0,0
+thehindu.com,Third country,IN,,estimate_only,8,8,0,0,1
+eurasiareview.com,Third country,US,,estimate_only,7,7,0,0,1
+larepublica.pe,Third country,PE,PE,estimate_domain_agree,7,7,0,0,0
+tass.ru,Third country,RS,RS,estimate_domain_agree,7,7,0,0,1
+thisdaylive.com,Third country,NI,,estimate_only,7,7,0,0,2
+island.lk,Third country,CE,CE,estimate_domain_agree,6,6,0,0,0
+jdsupra.com,Third country,US,,estimate_only,6,6,0,0,0
+netscape.com,Third country,US,,estimate_only,6,6,0,0,5
+obozrevatel.com,Third country,UP,,estimate_only,6,6,0,0,0
+prnewswire.com,Third country,US,,estimate_only,6,6,1,1,3
+protothema.gr,Third country,GR,GR,estimate_domain_agree,6,6,0,0,1
+sigmalive.com,Third country,CY,,estimate_only,6,6,1,0,1
+theguardian.com,Third country,UK,,estimate_only,6,6,0,0,1
+aawsat.com,Third country,SY,,estimate_only,5,5,0,0,1
+albawabhnews.com,Third country,EG,,estimate_only,5,5,0,0,1
+aljazeera.net,Third country,IS,,estimate_only,5,5,0,0,1
+bangkokpost.com,Third country,TH,,estimate_only,5,5,0,0,0
+birgun.net,Third country,TU,,estimate_only,5,5,0,0,0
+bryantimes.com,Third country,US,,estimate_only,5,5,0,0,0
+businessmirror.com.ph,Third country,RP,RP,estimate_domain_agree,5,5,0,0,2
+capital.gr,Third country,GR,GR,estimate_domain_agree,5,5,0,0,1
+carbon-pulse.com,Third country,US,,estimate_only,5,5,0,0,1
+ettoday.net,Third country,TW,,estimate_only,5,5,0,0,0
+hometownregister.com,Third country,US,,estimate_only,5,5,0,0,0
+imerisia.gr,Third country,GR,GR,estimate_domain_agree,5,5,0,0,1
+ltn.com.tw,Third country,TW,TW,estimate_domain_agree,5,5,0,0,1
+marketscreener.com,Third country,US,,estimate_only,5,5,0,0,1
+newsghana.com.gh,Third country,GH,GH,estimate_domain_agree,5,5,1,1,3
+phys.org,Third country,US,,estimate_only,5,5,0,0,2
+skai.gr,Third country,GR,GR,estimate_domain_agree,5,5,0,0,1
+sudanile.com,Third country,SU,,estimate_only,5,5,0,0,2
+thecable.ng,Third country,NI,NI,estimate_domain_agree,5,5,0,0,0
+tribuneonlineng.com,Third country,NI,,estimate_only,5,5,0,0,1
+voiceofalexandria.com,Third country,US,,estimate_only,5,5,0,0,1
+africa-newsroom.com,Third country,SF,,estimate_only,4,4,3,2,2
+africa.com,Third country,SF,,estimate_only,4,4,3,0,0
+aol.com,Third country,US,,estimate_only,4,4,0,0,1
+bdtonline.com,Third country,US,,estimate_only,4,4,0,0,4
+bunburymail.com.au,Third country,AS,AS,estimate_domain_agree,4,4,0,0,1
+carbonbrief.org,Third country,UK,,estimate_only,4,4,0,0,2
+chunichi.co.jp,Third country,JA,JA,estimate_domain_agree,4,4,0,0,4
+dailytimes.com.pk,Third country,PK,PK,estimate_domain_agree,4,4,0,0,0
+dawn.com,Third country,PK,,estimate_only,4,4,0,0,0
+digitaljournal.com,Third country,US,,estimate_only,4,4,0,0,0
+easternriverinachronicle.com.au,Third country,AS,AS,estimate_domain_agree,4,4,0,0,0
+ertnews.gr,Third country,,GR,domain_only,4,4,0,0,1
+examiner.com.au,Third country,AS,AS,estimate_domain_agree,4,4,0,0,0
+fao.org,Third country,IT,,estimate_only,4,4,0,0,1
+firstpost.com,Third country,IN,,estimate_only,4,4,0,0,2
+gdnonline.com,Third country,US,,estimate_only,4,4,0,0,2
+ghanamma.com,Third country,GH,,estimate_only,4,4,0,0,0
+herald.co.zw,Third country,ZI,ZI,estimate_domain_agree,4,4,1,1,2
+ibtimes.com,Third country,US,,estimate_only,4,4,0,0,0
+index.hu,Third country,HU,HU,estimate_domain_agree,4,4,0,0,1
+jamaica-gleaner.com,Third country,JM,,estimate_only,4,4,0,0,3
+juneesoutherncross.com.au,Third country,AS,AS,estimate_domain_agree,4,4,0,0,0
+localnews8.com,Third country,US,,estimate_only,4,4,0,0,0
+mandurahmail.com.au,Third country,AS,AS,estimate_domain_agree,4,4,0,0,1
+myjoyonline.com,Third country,GH,,estimate_only,4,4,0,0,0
+newsbomb.gr,Third country,GR,GR,estimate_domain_agree,4,4,0,0,1
+punchng.com,Third country,NI,,estimate_only,4,4,0,0,0
+setn.com,Third country,TW,,estimate_only,4,4,0,0,0
+skaikritis.gr,Third country,GR,GR,estimate_domain_agree,4,4,0,0,0
+slguardian.org,Third country,CE,,estimate_only,4,4,0,0,2
+techcabal.com,Third country,NI,,estimate_only,4,4,1,0,0
+thenews.com.pk,Third country,PK,PK,estimate_domain_agree,4,4,0,0,0
+thepeninsulaqatar.com,Third country,QA,,estimate_only,4,4,0,0,2
+thepointsguy.com,Third country,US,,estimate_only,4,4,0,0,0
+thereporterethiopia.com,Third country,ET,,estimate_only,4,4,0,0,0
+voanews.com,Third country,US,,estimate_only,4,4,0,0,4
+wardheernews.com,Third country,SO,,estimate_only,4,4,0,0,4
+wgauradio.com,Third country,US,,estimate_only,4,4,0,0,3
+winnipegfreepress.com,Third country,CA,,estimate_only,4,4,0,0,3
+wokv.com,Third country,US,,estimate_only,4,4,0,0,4
+wsbradio.com,Third country,US,,estimate_only,4,4,0,0,4
+adevarul.ro,Third country,RO,RO,estimate_domain_agree,3,3,0,0,1
+africanews.com,Third country,NI,,estimate_only,3,3,0,0,1
+apnews.com,Third country,US,,estimate_only,3,3,0,0,2
+athensvoice.gr,Third country,GR,GR,estimate_domain_agree,3,3,0,0,1
+barrons.com,Third country,US,,estimate_only,3,3,0,0,0
+bbc.com,Third country,UK,,estimate_only,3,3,0,0,1
+bendigoadvertiser.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,1
+bizcommunity.com,Third country,SF,,estimate_only,3,3,0,0,0
+bluemountainsgazette.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,1
+bssnews.net,Third country,BG,,estimate_only,3,3,0,0,0
+businessghana.com,Third country,GH,,estimate_only,3,3,0,0,0
+busseltonmail.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,0
+cbsnews.com,Third country,US,,estimate_only,3,3,0,0,3
+chicagotribune.com,Third country,US,,estimate_only,3,3,0,0,1
+cleantechnica.com,Third country,US,,estimate_only,3,3,0,0,2
+crookwellgazette.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,0
+dailyliberal.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,0
+dostor.org,Third country,EG,,estimate_only,3,3,0,0,1
+ekriti.gr,Third country,GR,GR,estimate_domain_agree,3,3,0,0,1
+elpais.com,Third country,SP,,estimate_only,3,3,0,0,0
+elpasoinc.com,Third country,US,,estimate_only,3,3,0,0,0
+enidnews.com,Third country,US,,estimate_only,3,3,0,0,3
+euronews.com,Third country,US,,estimate_only,3,3,0,0,0
+express.co.uk,Third country,UK,UK,estimate_domain_agree,3,3,0,0,2
+fairfieldsuntimes.com,Third country,US,,estimate_only,3,3,0,0,0
+fijivillage.com,Third country,FJ,,estimate_only,3,3,0,0,0
+finanznachrichten.de,Third country,GM,GM,estimate_domain_agree,3,3,0,0,1
+freshplaza.com,Third country,US,,estimate_only,3,3,0,0,1
+globes.co.il,Third country,IS,IS,estimate_domain_agree,3,3,0,0,0
+go.com,Third country,US,,estimate_only,3,3,0,0,2
+goulburnpost.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,0
+guardian.ng,Third country,NI,NI,estimate_domain_agree,3,3,0,0,0
+hawkesburygazette.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,1
+heraldbulletin.com,Third country,US,,estimate_only,3,3,0,0,3
+ibtimes.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,0
+iefimerida.gr,Third country,GR,GR,estimate_domain_agree,3,3,0,0,1
+independent.co.uk,Third country,UK,UK,estimate_domain_agree,3,3,0,0,2
+insidenova.com,Third country,US,,estimate_only,3,3,0,0,0
+investegate.co.uk,Third country,UK,UK,estimate_domain_agree,3,3,0,0,2
+iol.co.za,Third country,SF,SF,estimate_domain_agree,3,3,0,0,0
+irishexaminer.com,Third country,EI,,estimate_only,3,3,0,0,1
+jamaicaobserver.com,Third country,JM,,estimate_only,3,3,0,0,0
+jornaldebrasilia.com.br,Third country,BR,BR,estimate_domain_agree,3,3,0,0,0
+justsecurity.org,Third country,US,,estimate_only,3,3,0,0,0
+katherinetimes.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,0
+keyt.com,Third country,US,,estimate_only,3,3,0,0,1
+kiro7.com,Third country,US,,estimate_only,3,3,0,0,3
+kob.com,Third country,US,,estimate_only,3,3,0,0,2
+krmg.com,Third country,US,,estimate_only,3,3,0,0,2
+lancasteronline.com,Third country,US,,estimate_only,3,3,0,0,3
+libnanews.com,Third country,LE,,estimate_only,3,3,0,0,3
+lifo.gr,Third country,GR,GR,estimate_domain_agree,3,3,0,0,1
+mankatofreepress.com,Third country,US,,estimate_only,3,3,0,0,3
+menafn.com,Third country,US,,estimate_only,3,3,0,0,2
+miragenews.com,Third country,AS,,estimate_only,3,3,0,0,2
+mymotherlode.com,Third country,US,,estimate_only,3,3,0,0,2
+news247.gr,Third country,GR,GR,estimate_domain_agree,3,3,0,0,1
+newsday.com,Third country,US,,estimate_only,3,3,0,0,3
+northerndailyleader.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,0
+nos.nl,Third country,NL,NL,estimate_domain_agree,3,3,0,0,0
+premiumtimesng.com,Third country,NI,,estimate_only,3,3,0,0,1
+pressdemocrat.com,Third country,US,,estimate_only,3,3,0,0,3
+protagon.gr,Third country,GR,GR,estimate_domain_agree,3,3,0,0,1
+rador.ro,Third country,RO,RO,estimate_domain_agree,3,3,0,0,3
+redlandcitybulletin.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,1
+sb.by,Third country,BO,BO,estimate_domain_agree,3,3,0,0,1
+simpleflying.com,Third country,US,,estimate_only,3,3,0,0,3
+sofokleousin.gr,Third country,GR,GR,estimate_domain_agree,3,3,0,0,1
+straitstimes.com,Third country,SN,,estimate_only,3,3,0,0,0
+techradar.com,Third country,UK,,estimate_only,3,3,0,0,0
+telegrafi.com,Third country,KV,,estimate_only,3,3,0,0,2
+thefrontierpost.com,Third country,PK,,estimate_only,3,3,0,0,1
+thehill.com,Third country,US,,estimate_only,3,3,0,0,1
+thejakartapost.com,Third country,ID,,estimate_only,3,3,0,0,0
+thenewhumanitarian.org,Third country,SY,,estimate_only,3,3,0,0,3
+tribtown.com,Third country,US,,estimate_only,3,3,0,0,1
+tuoitrenews.vn,Third country,VM,VM,estimate_domain_agree,3,3,0,0,1
+varsitarian.net,Third country,RP,,estimate_only,3,3,0,0,0
+washingtontimes.com,Third country,US,,estimate_only,3,3,0,0,3
+westernadvocate.com.au,Third country,AS,AS,estimate_domain_agree,3,3,0,0,0
+wfmj.com,Third country,US,,estimate_only,3,3,0,0,3
+wsws.org,Third country,US,,estimate_only,3,3,0,0,1
+yakimaherald.com,Third country,US,,estimate_only,3,3,0,0,3
+ynet.co.il,Third country,IS,IS,estimate_domain_agree,3,3,0,0,0
+1news.az,Third country,AJ,AJ,estimate_domain_agree,2,2,0,0,1
+aa.com.tr,Third country,TU,TU,estimate_domain_agree,2,2,0,0,0
+abc17news.com,Third country,US,,estimate_only,2,2,0,0,0
+accesswdun.com,Third country,US,,estimate_only,2,2,0,0,2
+adn.com,Third country,US,,estimate_only,2,2,0,0,2
+africabusiness.com,Third country,SF,,estimate_only,2,2,0,0,0
+afriquinfos.com,Third country,FR,,estimate_only,2,2,0,0,2
+albiladpress.com,Third country,BA,,estimate_only,2,2,0,0,1
+aleqt.com,Third country,SA,,estimate_only,2,2,0,0,0
+alithia.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+aljazeera.com,Third country,US,,estimate_only,2,2,0,0,0
+allblacks.com,Third country,NZ,,estimate_only,2,2,0,0,0
+alriyadh.com,Third country,SA,,estimate_only,2,2,0,0,0
+alterpresse.org,Third country,HA,,estimate_only,2,2,0,0,0
+annapurnapost.com,Third country,NP,,estimate_only,2,2,0,0,0
+antaranews.com,Third country,ID,,estimate_only,2,2,0,0,0
+antena3.ro,Third country,RO,RO,estimate_domain_agree,2,2,0,0,0
+aol.co.uk,Third country,UK,UK,estimate_domain_agree,2,2,0,0,0
+apc.org,Third country,IN,,estimate_only,2,2,0,0,1
+araratadvertiser.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+areanews.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+arkansasonline.com,Third country,US,,estimate_only,2,2,0,0,1
+armidaleexpress.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+asahi.com,Third country,JA,,estimate_only,2,2,0,0,0
+aspendailynews.com,Third country,US,,estimate_only,2,2,0,0,2
+athina984.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+avaz.ba,Third country,BK,BK,estimate_domain_agree,2,2,0,0,0
+batemansbaypost.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+bbc.co.uk,Third country,UK,UK,estimate_domain_agree,2,2,0,0,0
+begadistrictnews.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+belfasttelegraph.co.uk,Third country,UK,UK,estimate_domain_agree,2,2,0,0,1
+bhaskar.com,Third country,IN,,estimate_only,2,2,0,0,0
+blayneychronicle.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+blueprint.ng,Third country,NI,NI,estimate_domain_agree,2,2,0,0,1
+boj.or.jp,Third country,JA,JA,estimate_domain_agree,2,2,0,0,0
+bordermail.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+bournemouthecho.co.uk,Third country,UK,UK,estimate_domain_agree,2,2,0,0,2
+braidwoodtimes.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+businessoffashion.com,Third country,US,,estimate_only,2,2,0,0,0
+camdencourier.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+capeandislands.org,Third country,US,,estimate_only,2,2,0,0,0
+centralwesterndaily.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+cessnockadvertiser.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+channelstv.com,Third country,NI,,estimate_only,2,2,0,0,0
+chimpreports.com,Third country,UG,,estimate_only,2,2,0,0,2
+cidob.org,Third country,RS,,estimate_only,2,2,0,0,2
+circleid.com,Third country,US,,estimate_only,2,2,0,0,0
+clickondetroit.com,Third country,US,,estimate_only,2,2,0,0,1
+clickorlando.com,Third country,US,,estimate_only,2,2,0,0,1
+clintonherald.com,Third country,US,,estimate_only,2,2,0,0,2
+cna.com.tw,Third country,TW,TW,estimate_domain_agree,2,2,2,2,2
+cointelegraph.com,Third country,US,,estimate_only,2,2,0,0,0
+coloradohometownweekly.com,Third country,US,,estimate_only,2,2,0,0,1
+cretalive.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+curierulnational.ro,Third country,RO,RO,estimate_domain_agree,2,2,0,0,1
+dailyadvertiser.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+dailyecho.co.uk,Third country,UK,UK,estimate_domain_agree,2,2,0,0,2
+dailynews.co.tz,Third country,TZ,TZ,estimate_domain_agree,2,2,0,0,0
+dailysabah.com,Third country,TU,,estimate_only,2,2,0,0,1
+dailytrust.com,Third country,NI,,estimate_only,2,2,0,0,1
+deccanchronicle.com,Third country,IN,,estimate_only,2,2,0,0,1
+delawarepublic.org,Third country,US,,estimate_only,2,2,0,0,0
+dungogchronicle.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+edaily.co.kr,Third country,KS,KS,estimate_domain_agree,2,2,0,0,0
+edenmagnet.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+elfagr.org,Third country,EG,,estimate_only,2,2,0,0,1
+em.com.br,Third country,BR,BR,estimate_domain_agree,2,2,0,0,0
+esi-africa.com,Third country,SF,,estimate_only,2,2,0,0,0
+euroweeklynews.com,Third country,SP,,estimate_only,2,2,0,0,1
+eyeradio.org,Third country,OD,,estimate_only,2,2,0,0,1
+fitzhugh.ca,Third country,CA,CA,estimate_domain_agree,2,2,0,0,2
+forbes.com,Third country,US,,estimate_only,2,2,0,0,1
+foreignaffairs.com,Third country,US,,estimate_only,2,2,0,0,0
+francetvinfo.fr,Third country,FR,FR,estimate_domain_agree,2,2,0,0,0
+gazeta.ua,Third country,UP,UP,estimate_domain_agree,2,2,0,0,0
+ghanaweb.com,Third country,GH,,estimate_only,2,2,0,0,0
+gjsentinel.com,Third country,US,,estimate_only,2,2,0,0,0
+gleninnesexaminer.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+globalissues.org,Third country,US,,estimate_only,2,2,0,0,2
+globalsecurity.org,Third country,US,,estimate_only,2,2,0,0,1
+globenewswire.com,Third country,US,,estimate_only,2,2,0,0,0
+gloucesteradvocate.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+goodmenproject.com,Third country,US,,estimate_only,2,2,0,0,0
+goshennews.com,Third country,US,,estimate_only,2,2,0,0,2
+greatlakesadvocate.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+hardenexpress.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+headforpoints.com,Third country,UK,,estimate_only,2,2,0,0,0
+hepburnadvocate.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+hindustantimes.com,Third country,IN,,estimate_only,2,2,0,0,1
+huffingtonpost.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+illawarramercury.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+indianexpress.com,Third country,IN,,estimate_only,2,2,0,0,2
+infobae.com,Third country,MX,,estimate_only,2,2,0,0,0
+infotel.ca,Third country,CA,CA,estimate_domain_agree,2,2,0,0,2
+inverelltimes.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+ipsnews.net,Third country,US,,estimate_only,2,2,0,0,2
+irrigator.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+issafrica.org,Third country,SF,,estimate_only,2,2,0,0,0
+ivpressonline.com,Third country,US,,estimate_only,2,2,0,0,2
+iz.ru,Third country,RS,RS,estimate_domain_agree,2,2,0,0,0
+jacarandafm.com,Third country,SF,,estimate_only,2,2,0,0,0
+joplinglobe.com,Third country,US,,estimate_only,2,2,0,0,2
+kasu.org,Third country,US,,estimate_only,2,2,0,0,0
+klcc.org,Third country,US,,estimate_only,2,2,0,0,0
+knau.org,Third country,US,,estimate_only,2,2,0,0,0
+koreatimes.co.kr,Third country,KS,KS,estimate_domain_agree,2,2,0,0,0
+korrespondent.net,Third country,UP,,estimate_only,2,2,0,0,0
+kp.ru,Third country,RS,RS,estimate_domain_agree,2,2,0,0,0
+ksta.de,Third country,GM,GM,estimate_domain_agree,2,2,0,0,0
+ktbs.com,Third country,US,,estimate_only,2,2,0,0,0
+ktvz.com,Third country,US,,estimate_only,2,2,0,0,0
+lasvegassun.com,Third country,US,,estimate_only,2,2,0,0,1
+lbc.co.uk,Third country,UK,UK,estimate_domain_agree,2,2,0,0,2
+lebanondemocrat.com,Third country,US,,estimate_only,2,2,0,0,0
+lexpress.mu,Third country,MP,MP,estimate_domain_agree,2,2,0,0,0
+lithgowmercury.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+local10.com,Third country,US,,estimate_only,2,2,0,0,1
+lykavitos.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+macleayargus.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+mailtimes.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+maitlandmercury.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+mako.co.il,Third country,IS,IS,estimate_domain_agree,2,2,0,0,0
+manningrivertimes.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+margaretrivermail.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+mediacongo.net,Third country,CG,,estimate_only,2,2,0,0,1
+merimbulanewsweekly.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+metro.co.uk,Third country,UK,UK,estimate_domain_agree,2,2,0,0,2
+mfa.gov.by,Third country,BO,BO,estimate_domain_agree,2,2,0,0,0
+mg.co.za,Third country,SF,SF,estimate_domain_agree,2,2,0,0,0
+mizzima.com,Third country,BM,,estimate_only,2,2,0,0,0
+modernghana.com,Third country,GH,,estimate_only,2,2,0,0,1
+mondaq.com,Third country,US,,estimate_only,2,2,0,0,0
+moneycontrol.com,Third country,IN,,estimate_only,2,2,0,0,0
+moreechampion.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+mtdemocrat.com,Third country,US,,estimate_only,2,2,0,0,0
+mudgeeguardian.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+muscatinejournal.com,Third country,US,,estimate_only,2,2,0,0,2
+muswellbrookchronicle.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+mykxlg.com,Third country,US,,estimate_only,2,2,0,0,1
+mynorthwest.com,Third country,US,,estimate_only,2,2,0,0,1
+nafpaktianews.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+naftemporiki.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,1
+nairametrics.com,Third country,NI,,estimate_only,2,2,1,0,0
+naroomanewsonline.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+narrominenewsonline.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+nationalaccordnewspaper.com,Third country,NI,,estimate_only,2,2,0,0,0
+nbcconnecticut.com,Third country,US,,estimate_only,2,2,0,0,1
+nbcnewyork.com,Third country,US,,estimate_only,2,2,0,0,1
+nbcphiladelphia.com,Third country,US,,estimate_only,2,2,0,0,1
+ndtv.com,Third country,IN,,estimate_only,2,2,0,0,0
+newcastleherald.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+newdelhitimes.com,Third country,US,,estimate_only,2,2,0,0,1
+newpost.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+news4jax.com,Third country,US,,estimate_only,2,2,0,0,1
+newsbeast.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,1
+newzealandstar.com,Third country,NZ,,estimate_only,2,2,0,0,1
+northwestsignal.net,Third country,US,,estimate_only,2,2,0,0,0
+northweststar.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+npr.org,Third country,US,,estimate_only,2,2,0,0,0
+nrk.no,Third country,NO,NO,estimate_domain_agree,2,2,0,0,0
+nvi.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+nynganobserver.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+oberonreview.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+offsite.com.cy,Third country,CY,CY,estimate_domain_agree,2,2,0,0,1
+opinionnigeria.com,Third country,NI,,estimate_only,2,2,0,0,0
+oskaloosa.com,Third country,US,,estimate_only,2,2,0,0,2
+ottumwacourier.com,Third country,US,,estimate_only,2,2,0,0,2
+pelop.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+philenews.com,Third country,CY,,estimate_only,2,2,0,0,0
+phillytrib.com,Third country,US,,estimate_only,2,2,0,0,2
+pmnewsnigeria.com,Third country,NI,,estimate_only,2,2,0,0,0
+polity.org.za,Third country,SF,SF,estimate_domain_agree,2,2,0,0,1
+portnews.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+portstephensexaminer.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+pressafrik.com,Third country,SG,,estimate_only,2,2,0,0,2
+prokerala.com,Third country,IN,,estimate_only,2,2,0,0,1
+propakistani.pk,Third country,PK,PK,estimate_domain_agree,2,2,0,0,0
+queanbeyanage.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+railjournal.com,Third country,GM,,estimate_only,2,2,0,0,2
+ramatoulaye.com,Third country,GV,,estimate_only,2,2,0,0,2
+razon.com.mx,Third country,MX,MX,estimate_domain_agree,2,2,0,0,0
+rbc.ua,Third country,UP,UP,estimate_domain_agree,2,2,0,0,0
+real.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,1
+record-eagle.com,Third country,US,,estimate_only,2,2,0,0,2
+register-herald.com,Third country,US,,estimate_only,2,2,0,0,2
+reliefweb.int,Third country,SY,,estimate_only,2,2,0,0,1
+reporter.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+rnanews.com,Third country,RW,,estimate_only,2,2,0,0,1
+saharareporters.com,Third country,NI,,estimate_only,2,2,0,0,0
+sanfordherald.com,Third country,US,,estimate_only,2,2,0,0,0
+santamariatimes.com,Third country,US,,estimate_only,2,2,0,0,2
+sconeadvocate.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+scoop.co.nz,Third country,NZ,NZ,estimate_domain_agree,2,2,0,0,2
+shfanews.net,Third country,IS,,estimate_only,2,2,0,0,0
+singletonargus.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+siouxcityjournal.com,Third country,US,,estimate_only,2,2,0,0,2
+skaipatras.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+sky.com,Third country,UK,,estimate_only,2,2,0,0,0
+smdailyjournal.com,Third country,US,,estimate_only,2,2,0,0,2
+smh.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+sofokleous10.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,1
+sofrep.com,Third country,US,,estimate_only,2,2,0,0,0
+southernhighlandnews.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+srilankasource.com,Third country,CE,,estimate_only,2,2,0,0,0
+stalbertgazette.com,Third country,CA,,estimate_only,2,2,0,0,2
+stawelltimes.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+sun-sentinel.com,Third country,US,,estimate_only,2,2,0,0,1
+swissinfo.ch,Third country,SZ,SZ,estimate_domain_agree,2,2,0,0,1
+tenterfieldstar.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+the-messenger.com,Third country,US,,estimate_only,2,2,0,0,2
+theadvocate.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+thebftonline.com,Third country,GH,,estimate_only,2,2,0,0,0
+thechronicle.com.gh,Third country,GH,GH,estimate_domain_agree,2,2,0,0,0
+thedailystar.net,Third country,BG,,estimate_only,2,2,0,0,0
+theepochtimes.com,Third country,US,,estimate_only,2,2,0,0,0
+theglobeandmail.com,Third country,CA,,estimate_only,2,2,0,0,0
+thehindubusinessline.com,Third country,IN,,estimate_only,2,2,0,0,0
+theland.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+theleader.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+themarker.com,Third country,IS,,estimate_only,2,2,0,0,0
+thenationalnews.com,Third country,UK,,estimate_only,2,2,0,0,1
+thenewsnigeria.com.ng,Third country,NI,NI,estimate_domain_agree,2,2,0,0,0
+thepaper.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,0
+therural.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+thesun.my,Third country,,MY,domain_only,2,2,0,0,1
+thesun.ng,Third country,,NI,domain_only,2,2,0,0,0
+thetimestribune.com,Third country,US,,estimate_only,2,2,0,0,2
+theweek.in,Third country,IN,IN,estimate_domain_agree,2,2,0,0,1
+times-news.com,Third country,US,,estimate_only,2,2,0,0,2
+tmcnet.com,Third country,US,,estimate_only,2,2,0,0,1
+tovima.gr,Third country,GR,GR,estimate_domain_agree,2,2,0,0,1
+ualrpublicradio.org,Third country,US,,estimate_only,2,2,0,0,0
+ulladullatimes.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+uol.com.br,Third country,BR,BR,estimate_domain_agree,2,2,0,0,0
+vanguardia.com.mx,Third country,MX,MX,estimate_domain_agree,2,2,0,0,0
+vetogate.com,Third country,EG,,estimate_only,2,2,0,0,0
+vindy.com,Third country,US,,estimate_only,2,2,0,0,2
+waer.org,Third country,US,,estimate_only,2,2,0,0,0
+wboc.com,Third country,US,,estimate_only,2,2,0,0,1
+wcbe.org,Third country,US,,estimate_only,2,2,0,0,0
+wnmufm.org,Third country,US,,estimate_only,2,2,0,0,0
+worldathletics.org,Third country,US,,estimate_only,2,2,0,0,1
+wri.org,Third country,US,,estimate_only,2,2,0,0,1
+wsls.com,Third country,US,,estimate_only,2,2,0,0,1
+wtop.com,Third country,US,,estimate_only,2,2,0,0,2
+wwno.org,Third country,US,,estimate_only,2,2,0,0,0
+yam.com,Third country,TW,,estimate_only,2,2,0,0,0
+yasstribune.com.au,Third country,AS,AS,estimate_domain_agree,2,2,0,0,0
+youralaskalink.com,Third country,US,,estimate_only,2,2,0,0,0
+ypradio.org,Third country,US,,estimate_only,2,2,0,0,0
+yumasun.com,Third country,US,,estimate_only,2,2,0,0,2
+1017chuckfm.com,Third country,US,,estimate_only,1,1,0,0,1
+1037qcountry.com,Third country,US,,estimate_only,1,1,0,0,1
+1061thecorner.com,Third country,US,,estimate_only,1,1,0,0,1
+11alive.com,Third country,US,,estimate_only,1,1,0,0,1
+1370wfea.com,Third country,US,,estimate_only,1,1,0,0,1
+13wham.com,Third country,US,,estimate_only,1,1,0,0,1
+24-ore.com,Third country,AL,,estimate_only,1,1,0,0,0
+247wallst.com,Third country,US,,estimate_only,1,1,0,0,0
+365.com.mk,Third country,MK,MK,estimate_domain_agree,1,1,0,0,0
+3wv.com,Third country,US,,estimate_only,1,1,0,0,1
+76crimes.com,Third country,UG,,estimate_only,1,1,0,0,1
+902.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,1
+969wsig.com,Third country,US,,estimate_only,1,1,0,0,1
+981theriver.com,Third country,US,,estimate_only,1,1,0,0,1
+987wink.com,Third country,US,,estimate_only,1,1,0,0,1
+9news.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+abbynews.com,Third country,CA,,estimate_only,1,1,0,0,1
+abc.com.py,Third country,PA,PA,estimate_domain_agree,1,1,0,0,0
+abc.net.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+abnews.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,0
+actualno.com,Third country,BU,,estimate_only,1,1,0,0,0
+adnkronos.com,Third country,IT,,estimate_only,1,1,0,0,0
+africacenter.org,Third country,NI,,estimate_only,1,1,0,0,0
+africanexaminer.com,Third country,NI,,estimate_only,1,1,0,0,0
+africapractice.com,Third country,SF,,estimate_only,1,1,0,0,1
+afrik.com,Third country,FR,,estimate_only,1,1,0,0,0
+afriquesenlutte.org,Third country,FR,,estimate_only,1,1,0,0,1
+afro.com,Third country,US,,estimate_only,1,1,0,0,1
+agassizharrisonobserver.com,Third country,CA,,estimate_only,1,1,0,0,1
+agri-pulse.com,Third country,US,,estimate_only,1,1,0,0,0
+airdriecityview.com,Third country,CA,,estimate_only,1,1,0,0,1
+aixmi-news.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+ajc.com,Third country,US,,estimate_only,1,1,0,0,1
+al-sharq.com,Third country,QA,,estimate_only,1,1,0,0,0
+alahalygate.com,Third country,EG,,estimate_only,1,1,0,0,1
+albeu.com,Third country,AL,,estimate_only,1,1,0,0,0
+aldergrovestar.com,Third country,CA,,estimate_only,1,1,0,0,1
+aletihad.ae,Third country,,AE,domain_only,1,1,0,0,1
+alkhabarnow.net,Third country,YM,,estimate_only,1,1,0,0,0
+allkharkov.ua,Third country,UP,UP,estimate_domain_agree,1,1,0,0,0
+almasryalyoum.com,Third country,EG,,estimate_only,1,1,0,0,1
+almontasaf.net,Third country,YM,,estimate_only,1,1,0,0,0
+alo.rs,Third country,RI,RI,estimate_domain_agree,1,1,0,0,0
+alphatv.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+altaghyeer.info,Third country,SU,,estimate_only,1,1,0,0,0
+altenergymag.com,Third country,US,,estimate_only,1,1,0,0,0
+altoonamirror.com,Third country,US,,estimate_only,1,1,0,0,1
+alwasat.ly,Third country,LY,LY,estimate_domain_agree,1,1,0,0,0
+ammonnews.net,Third country,JO,,estimate_only,1,1,0,0,0
+amsterdamnews.com,Third country,US,,estimate_only,1,1,0,0,1
+anbaaonline.com,Third country,LE,,estimate_only,1,1,0,0,1
+andoveradvertiser.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+aninews.in,Third country,IN,IN,estimate_domain_agree,1,1,0,0,0
+anlatilaninotesi.com.tr,Third country,,TU,domain_only,1,1,0,0,0
+annabaa.org,Third country,IZ,,estimate_only,1,1,0,0,1
+apanews.net,Third country,IV,,estimate_only,1,1,0,0,1
+arabnews.com,Third country,SA,,estimate_only,1,1,0,0,0
+arabstoday.net,Third country,SY,,estimate_only,1,1,0,0,0
+argumenti.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,0
+asianimage.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+asiatoday.co.kr,Third country,KS,KS,estimate_domain_agree,1,1,0,0,0
+aspenpublicradio.org,Third country,US,,estimate_only,1,1,0,0,0
+athens-times.com,Third country,GR,,estimate_only,1,1,0,0,0
+atlanticcouncil.org,Third country,US,,estimate_only,1,1,0,0,0
+authorityngr.com,Third country,NI,,estimate_only,1,1,1,1,1
+azertag.az,Third country,AJ,AJ,estimate_domain_agree,1,1,0,0,0
+baltimoresun.com,Third country,US,,estimate_only,1,1,0,0,0
+bangordailynews.com,Third country,US,,estimate_only,1,1,0,0,1
+banker.bg,Third country,BU,BU,estimate_domain_agree,1,1,0,0,0
+bankingnews.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+banksnews.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+bankwars.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+barrigaverde.net,Third country,US,,estimate_only,1,1,0,0,0
+barryanddistrictnews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+basingstokegazette.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+bd-pratidin.com,Third country,BG,,estimate_only,1,1,0,0,0
+bdnews24.com,Third country,BG,,estimate_only,1,1,0,0,1
+bear953.com,Third country,US,,estimate_only,1,1,0,0,1
+beaver1003.com,Third country,US,,estimate_only,1,1,0,0,1
+bellanaija.com,Third country,NI,,estimate_only,1,1,0,0,0
+bernama.com,Third country,MY,,estimate_only,1,1,0,0,0
+bgnes.bg,Third country,,BU,domain_only,1,1,0,0,1
+bgr.com,Third country,US,,estimate_only,1,1,0,0,0
+bicesteradvertiser.net,Third country,UK,,estimate_only,1,1,0,0,1
+bigmir.net,Third country,UP,,estimate_only,1,1,0,0,0
+bilkulonline.com,Third country,IN,,estimate_only,1,1,0,0,0
+birminghammail.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+biznews.com,Third country,SF,,estimate_only,1,1,0,0,0
+blackseanews.net,Third country,UP,,estimate_only,1,1,0,0,0
+bloomberg.com,Third country,US,,estimate_only,1,1,0,0,0
+bonde.com.br,Third country,BR,BR,estimate_domain_agree,1,1,0,0,0
+bordertelegraph.com,Third country,UK,,estimate_only,1,1,0,0,1
+borehamwoodtimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+bostonglobe.com,Third country,US,,estimate_only,1,1,0,0,0
+bostonherald.com,Third country,US,,estimate_only,1,1,0,0,0
+bracknellnews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+braintreeandwithamtimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+bramptonguardian.com,Third country,CA,,estimate_only,1,1,0,0,0
+bransontrilakesnews.com,Third country,US,,estimate_only,1,1,0,0,0
+breakingnews.ie,Third country,EI,EI,estimate_domain_agree,1,1,0,0,1
+breitbart.com,Third country,US,,estimate_only,1,1,0,0,0
+brentwoodlive.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+bridgwatermercury.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+brisbanetimes.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+bristolpost.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+bromsgroveadvertiser.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+bucksfreepress.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+burnhamandhighbridgeweeklynews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+burytimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+businessnews.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+bworldonline.com,Third country,RP,,estimate_only,1,1,0,0,0
+cadillacnews.com,Third country,US,,estimate_only,1,1,0,0,0
+calcalist.co.il,Third country,IS,IS,estimate_domain_agree,1,1,0,0,0
+caledoniacourier.com,Third country,CA,,estimate_only,1,1,0,0,1
+cameroon-concord.com,Third country,CM,,estimate_only,1,1,0,0,0
+campbellrivermirror.com,Third country,CA,,estimate_only,1,1,0,0,1
+canadafreepress.com,Third country,US,,estimate_only,1,1,0,0,0
+canberratimes.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+canoncitydailyrecord.com,Third country,US,,estimate_only,1,1,0,0,0
+capitalgazette.com,Third country,US,,estimate_only,1,1,0,0,0
+carnegieendowment.org,Third country,US,,estimate_only,1,1,0,0,0
+cecildaily.com,Third country,US,,estimate_only,1,1,0,0,1
+centralmaine.com,Third country,US,,estimate_only,1,1,0,0,0
+centreforaviation.com,Third country,US,,estimate_only,1,1,0,0,0
+ceskatelevize.cz,Third country,EZ,EZ,estimate_domain_agree,1,1,0,0,0
+cfr.org,Third country,US,,estimate_only,1,1,0,0,0
+championat.com,Third country,RS,,estimate_only,1,1,0,0,0
+channelafrica.co.za,Third country,SF,SF,estimate_domain_agree,1,1,0,0,0
+chardandilminsternews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+charentelibre.fr,Third country,FR,FR,estimate_domain_agree,1,1,0,0,0
+chesterstandard.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+chiangraitimes.com,Third country,TH,,estimate_only,1,1,0,0,0
+christiandaily.com,Third country,US,,estimate_only,1,1,0,0,1
+chronicle.co.zw,Third country,ZI,ZI,estimate_domain_agree,1,1,0,0,1
+chroniclejournal.com,Third country,CA,,estimate_only,1,1,0,0,1
+cio.com,Third country,US,,estimate_only,1,1,0,0,0
+citizen.co.za,Third country,SF,SF,estimate_domain_agree,1,1,0,0,0
+citynews.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+clactonandfrintongazette.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+clearwatertimes.com,Third country,CA,,estimate_only,1,1,0,0,1
+click2houston.com,Third country,US,,estimate_only,1,1,0,0,1
+cloverdalereporter.com,Third country,CA,,estimate_only,1,1,0,0,1
+clydebankpost.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+cnbc.com,Third country,US,,estimate_only,1,1,0,0,0
+coast931.com,Third country,US,,estimate_only,1,1,0,0,1
+coastreporter.net,Third country,CA,,estimate_only,1,1,0,0,1
+comoxvalleyrecord.com,Third country,CA,,estimate_only,1,1,0,0,1
+cootamundraherald.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+correiobraziliense.com.br,Third country,BR,BR,estimate_domain_agree,1,1,0,0,0
+correiodopovo.com.br,Third country,BR,BR,estimate_domain_agree,1,1,0,0,1
+cosmosmagazine.com,Third country,AS,,estimate_only,1,1,0,0,0
+cotswoldjournal.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+countercurrents.org,Third country,IN,,estimate_only,1,1,0,0,1
+counterpunch.org,Third country,US,,estimate_only,1,1,0,0,0
+countypress.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+countytimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+courant.com,Third country,US,,estimate_only,1,1,0,0,0
+courrierfrontenac.qc.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+cowichanvalleycitizen.com,Third country,CA,,estimate_only,1,1,0,0,1
+cranbrooktownsman.com,Third country,CA,,estimate_only,1,1,0,0,1
+cravenherald.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+crikey.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+crn.com,Third country,US,,estimate_only,1,1,0,0,0
+dagsavisen.no,Third country,NO,NO,estimate_domain_agree,1,1,0,0,0
+dailybreeze.com,Third country,US,,estimate_only,1,1,0,0,0
+dailybulletin.com,Third country,US,,estimate_only,1,1,0,0,0
+dailyindependent.com,Third country,US,,estimate_only,1,1,0,0,1
+dailyinterlake.com,Third country,US,,estimate_only,1,1,0,0,1
+dailynews.co.th,Third country,TH,TH,estimate_domain_agree,1,1,0,0,0
+dailytimes.com,Third country,US,,estimate_only,1,1,0,0,1
+dan.co.me,Third country,MJ,MJ,estimate_domain_agree,1,1,0,0,0
+darlingtonandstocktontimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+day.az,Third country,AJ,AJ,estimate_domain_agree,1,1,0,0,0
+daytondailynews.com,Third country,US,,estimate_only,1,1,0,0,1
+decaturdaily.com,Third country,US,,estimate_only,1,1,0,0,1
+defenceweb.co.za,Third country,SF,SF,estimate_domain_agree,1,1,0,0,0
+delcotimes.com,Third country,US,,estimate_only,1,1,0,0,0
+delfi.lt,Third country,LH,LH,estimate_domain_agree,1,1,0,0,0
+denbighshirefreepress.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+denikreferendum.cz,Third country,EZ,EZ,estimate_domain_agree,1,1,0,0,0
+dennikn.sk,Third country,LO,LO,estimate_domain_agree,1,1,0,0,0
+denverpost.com,Third country,US,,estimate_only,1,1,0,0,1
+devdiscourse.com,Third country,US,,estimate_only,1,1,0,0,0
+dewereldmorgen.be,Third country,BE,BE,estimate_domain_agree,1,1,0,0,0
+diariolibre.com,Third country,US,,estimate_only,1,1,0,0,0
+diariosigloxxi.com,Third country,SP,,estimate_only,1,1,0,0,0
+dimokratiki.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+djcoregon.com,Third country,US,,estimate_only,1,1,0,0,1
+dn.se,Third country,SW,SW,estimate_domain_agree,1,1,0,0,0
+dnevnik.rs,Third country,RI,RI,estimate_domain_agree,1,1,0,0,0
+dnews.gr,Third country,,GR,domain_only,1,1,0,0,0
+dnoticias.pt,Third country,PO,PO,estimate_domain_agree,1,1,0,0,1
+dominicanrepublicpost.com,Third country,US,,estimate_only,1,1,0,0,0
+dongascience.com,Third country,KS,,estimate_only,1,1,0,0,0
+dorsetecho.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+dosja.al,Third country,,AL,domain_only,1,1,0,0,0
+dr.dk,Third country,DA,DA,estimate_domain_agree,1,1,0,0,0
+dudleynews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+dumbartonreporter.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+dunfermlinepress.com,Third country,UK,,estimate_only,1,1,0,0,1
+durangoherald.com,Third country,US,,estimate_only,1,1,0,0,1
+eadt.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+eagle1005.com,Third country,US,,estimate_only,1,1,0,0,1
+ealingtimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+eastidahonews.com,Third country,US,,estimate_only,1,1,0,0,1
+ebar.com,Third country,US,,estimate_only,1,1,0,0,0
+ecfr.eu,Third country,RS,,estimate_only,1,1,0,0,0
+echo-news.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+ecoticias.com,Third country,SP,,estimate_only,1,1,0,0,1
+edp24.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+egyptindependent.com,Third country,EG,,estimate_only,1,1,0,0,0
+ekantipur.com,Third country,NP,,estimate_only,1,1,0,0,1
+el-balad.com,Third country,EG,,estimate_only,1,1,0,0,0
+eldestapeweb.com,Third country,AR,,estimate_only,1,1,0,0,0
+eldiariodechihuahua.mx,Third country,MX,MX,estimate_domain_agree,1,1,0,0,0
+eleconomista.com.mx,Third country,MX,MX,estimate_domain_agree,1,1,0,0,0
+electronicsweekly.com,Third country,UK,,estimate_only,1,1,0,0,0
+elespectador.com,Third country,CO,,estimate_only,1,1,1,0,0
+elledecor.com,Third country,US,,estimate_only,1,1,0,0,0
+ellitoral.com,Third country,AR,,estimate_only,1,1,0,0,0
+elnortedecastilla.es,Third country,SP,SP,estimate_domain_agree,1,1,0,0,0
+elobservador.com.uy,Third country,UY,UY,estimate_domain_agree,1,1,0,0,0
+elsiglodetorreon.com.mx,Third country,MX,MX,estimate_domain_agree,1,1,0,0,0
+empisteutiko.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+enallaxnews.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+enca.com,Third country,SF,,estimate_only,1,1,0,0,0
+energylivenews.com,Third country,UK,,estimate_only,1,1,0,0,0
+enfieldindependent.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+enikos.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,1
+epikaira.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+eppingforestguardian.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+erienewsnow.com,Third country,US,,estimate_only,1,1,0,0,0
+esquire.com,Third country,US,,estimate_only,1,1,0,0,0
+estadao.com.br,Third country,BR,BR,estimate_domain_agree,1,1,0,0,0
+euractiv.pl,Third country,PL,PL,estimate_domain_agree,1,1,0,0,1
+euro2day.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,1
+eveshamjournal.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+evz.ro,Third country,RO,RO,estimate_domain_agree,1,1,0,0,0
+ewn.co.za,Third country,SF,SF,estimate_domain_agree,1,1,0,0,0
+express.pk,Third country,PK,PK,estimate_domain_agree,1,1,0,0,1
+face2faceafrica.com,Third country,US,,estimate_only,1,1,0,0,0
+fakti.bg,Third country,BU,BU,estimate_domain_agree,1,1,0,0,1
+falmouthpacket.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+faribaultcountyregister.com,Third country,US,,estimate_only,1,1,0,0,1
+fillmorecountyjournal.com,Third country,US,,estimate_only,1,1,0,0,0
+finance-commerce.com,Third country,US,,estimate_only,1,1,0,0,1
+financialexpress.com,Third country,IN,,estimate_only,1,1,0,0,1
+fj-p.com,Third country,EG,,estimate_only,1,1,0,0,0
+floydct.com,Third country,US,,estimate_only,1,1,0,0,0
+fm99.com,Third country,US,,estimate_only,1,1,0,0,1
+focus.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,1
+focus.ua,Third country,UP,UP,estimate_domain_agree,1,1,0,0,0
+fodors.com,Third country,US,,estimate_only,1,1,0,0,0
+forbes.pl,Third country,PL,PL,estimate_domain_agree,1,1,0,0,0
+forsal.pl,Third country,PL,PL,estimate_domain_agree,1,1,0,0,0
+foxbangor.com,Third country,US,,estimate_only,1,1,0,0,0
+foxnews.com,Third country,US,,estimate_only,1,1,0,0,1
+freepressseries.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+freightwaves.com,Third country,US,,estimate_only,1,1,0,0,1
+fremonttribune.com,Third country,US,,estimate_only,1,1,0,0,1
+freshfruitportal.com,Third country,US,,estimate_only,1,1,0,0,0
+futura-sciences.com,Third country,FR,,estimate_only,1,1,0,0,0
+galvnews.com,Third country,US,,estimate_only,1,1,0,0,1
+gamingintelligence.com,Third country,US,,estimate_only,1,1,0,0,0
+gatestoneinstitute.org,Third country,IS,,estimate_only,1,1,0,0,0
+gazeta-shqip.com,Third country,AL,,estimate_only,1,1,0,0,0
+gazetatema.net,Third country,AL,,estimate_only,1,1,0,0,0
+gazette-news.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+gazette.com,Third country,US,,estimate_only,1,1,0,0,0
+gazetteandherald.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+gazetteherald.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+gazetteseries.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+geographical.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+ggrasia.com,Third country,MC,,estimate_only,1,1,0,0,0
+ghanaiantimes.com.gh,Third country,GH,GH,estimate_domain_agree,1,1,0,0,1
+glasamerike.net,Third country,RI,,estimate_only,1,1,0,0,1
+glasgowtimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+glavred.info,Third country,UP,,estimate_only,1,1,0,0,0
+globalatlanta.com,Third country,US,,estimate_only,1,1,0,0,0
+globo.com,Third country,BR,,estimate_only,1,1,0,0,0
+gol.mk,Third country,MK,MK,estimate_domain_agree,1,1,0,0,1
+granbyexpress.com,Third country,CA,,estimate_only,1,1,0,0,1
+grandforksgazette.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+grandforksherald.com,Third country,US,,estimate_only,1,1,0,0,0
+graphic.com.gh,Third country,GH,GH,estimate_domain_agree,1,1,0,0,0
+greeleytribune.com,Third country,US,,estimate_only,1,1,0,0,0
+greenfieldreporter.com,Third country,US,,estimate_only,1,1,0,0,1
+greensboro.com,Third country,US,,estimate_only,1,1,0,0,1
+grenadachronicle.com,Third country,US,,estimate_only,1,1,0,0,0
+guampdn.com,Third country,GQ,,estimate_only,1,1,0,0,0
+guardian-series.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+guernseypress.com,Third country,UK,,estimate_only,1,1,0,0,1
+guineaecuatorialpress.com,Third country,GV,,estimate_only,1,1,0,0,0
+guineenews.org,Third country,GV,,estimate_only,1,1,0,0,1
+gulfbusiness.com,Third country,SA,,estimate_only,1,1,0,0,0
+haberler.com,Third country,TU,,estimate_only,1,1,1,0,0
+haitian-truth.org,Third country,HA,,estimate_only,1,1,0,0,0
+haitiantimes.com,Third country,HA,,estimate_only,1,1,0,0,0
+halesowennews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+halsteadgazette.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+hamhigh.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+hampshirechronicle.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+hankookilbo.com,Third country,KS,,estimate_only,1,1,0,0,0
+harrowtimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+harvard.edu,Third country,US,,estimate_only,1,1,0,0,0
+havanatimes.org,Third country,CU,,estimate_only,1,1,0,0,0
+heise.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,0
+hellenicnews.com,Third country,GR,,estimate_only,1,1,0,0,0
+heraldcorp.com,Third country,KS,,estimate_only,1,1,0,0,0
+heritage.org,Third country,US,,estimate_only,1,1,0,0,1
+hexham-courant.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+hispanicoutlook.com,Third country,US,,estimate_only,1,1,0,0,0
+hits999fm.com,Third country,US,,estimate_only,1,1,0,0,1
+hngnews.com,Third country,US,,estimate_only,1,1,0,0,1
+hojemacau.com.mo,Third country,MC,MC,estimate_domain_agree,1,1,0,0,0
+homenewshere.com,Third country,US,,estimate_only,1,1,0,0,0
+hongkongfp.com,Third country,HK,,estimate_only,1,1,0,0,0
+hopestandard.com,Third country,CA,,estimate_only,1,1,0,0,1
+hotelnewsresource.com,Third country,US,,estimate_only,1,1,0,0,0
+hotsr.com,Third country,US,,estimate_only,1,1,0,0,1
+houstonchronicle.com,Third country,US,,estimate_only,1,1,0,0,1
+houstonpublicmedia.org,Third country,US,,estimate_only,1,1,0,0,0
+hoy.com.ni,Third country,NU,NU,estimate_domain_agree,1,1,0,0,0
+hoy.es,Third country,SP,SP,estimate_domain_agree,1,1,0,0,0
+hppr.org,Third country,US,,estimate_only,1,1,0,0,0
+humanite.fr,Third country,FR,FR,estimate_domain_agree,1,1,0,0,0
+hyperallergic.com,Third country,US,,estimate_only,1,1,0,0,0
+i100rocks.com,Third country,US,,estimate_only,1,1,0,0,1
+iafrica.com,Third country,SF,,estimate_only,1,1,0,0,1
+idahostatejournal.com,Third country,US,,estimate_only,1,1,0,0,1
+idnes.cz,Third country,EZ,EZ,estimate_domain_agree,1,1,0,0,0
+idsa.in,Third country,IN,IN,estimate_domain_agree,1,1,0,0,1
+ifamagazine.com,Third country,UK,,estimate_only,1,1,0,0,1
+impartialreporter.com,Third country,UK,,estimate_only,1,1,0,0,1
+in.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+independent.com,Third country,US,,estimate_only,1,1,0,0,0
+independent.ie,Third country,EI,EI,estimate_domain_agree,1,1,0,0,0
+independentnews.com,Third country,US,,estimate_only,1,1,0,0,0
+index.hr,Third country,HR,HR,estimate_domain_agree,1,1,0,0,0
+india.com,Third country,IN,,estimate_only,1,1,0,0,0
+informacion.es,Third country,SP,SP,estimate_domain_agree,1,1,0,0,0
+informer.rs,Third country,RI,RI,estimate_domain_agree,1,1,0,0,0
+informs.org,Third country,US,,estimate_only,1,1,0,0,1
+inforum.com,Third country,US,,estimate_only,1,1,0,0,0
+infowire.pl,Third country,PL,PL,estimate_domain_agree,1,1,1,0,0
+insideflyer.com,Third country,US,,estimate_only,1,1,0,0,1
+insidehalton.com,Third country,CA,,estimate_only,1,1,0,0,0
+insideottawavalley.com,Third country,CA,,estimate_only,1,1,0,0,0
+insightcrime.org,Third country,MX,,estimate_only,1,1,0,0,0
+interest.co.nz,Third country,NZ,NZ,estimate_domain_agree,1,1,0,0,0
+interior-news.com,Third country,CA,,estimate_only,1,1,0,0,1
+interlochenpublicradio.org,Third country,US,,estimate_only,1,1,0,0,0
+interpol.int,Third country,FR,,estimate_only,1,1,0,0,0
+investing.com,Third country,US,,estimate_only,1,1,0,0,0
+investmentnews.com,Third country,US,,estimate_only,1,1,0,0,0
+ipswichstar.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+irishnews.com,Third country,UK,,estimate_only,1,1,0,0,1
+irozhlas.cz,Third country,,EZ,domain_only,1,1,0,0,0
+irrawaddy.com,Third country,BM,,estimate_only,1,1,0,0,0
+irvinetimes.com,Third country,UK,,estimate_only,1,1,0,0,1
+isaaa.org,Third country,RP,,estimate_only,1,1,0,0,0
+itnewsafrica.com,Third country,SF,,estimate_only,1,1,0,0,0
+iwradio.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+jamestownsun.com,Third country,US,,estimate_only,1,1,0,0,0
+jammin983.com,Third country,US,,estimate_only,1,1,0,0,1
+japantimes.co.jp,Third country,JA,JA,estimate_domain_agree,1,1,0,0,1
+javedch.com,Third country,PK,,estimate_only,1,1,0,0,1
+jdnews.com,Third country,US,,estimate_only,1,1,0,0,1
+jerseyeveningpost.com,Third country,UK,,estimate_only,1,1,0,0,1
+journaldemontreal.com,Third country,CA,,estimate_only,1,1,0,0,0
+journalleguide.com,Third country,CA,,estimate_only,1,1,0,0,1
+journalnow.com,Third country,US,,estimate_only,1,1,0,0,1
+journalstar.com,Third country,US,,estimate_only,1,1,0,0,1
+kaaltv.com,Third country,US,,estimate_only,1,1,0,0,1
+kanw.com,Third country,US,,estimate_only,1,1,0,0,0
+karatoa.com.bd,Third country,BG,BG,estimate_domain_agree,1,1,0,0,0
+kathimerini.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+katu.com,Third country,US,,estimate_only,1,1,0,0,1
+kawc.org,Third country,US,,estimate_only,1,1,0,0,0
+kazu.org,Third country,US,,estimate_only,1,1,0,0,0
+kcbx.org,Third country,US,,estimate_only,1,1,0,0,0
+kccu.org,Third country,US,,estimate_only,1,1,0,0,0
+kclu.org,Third country,US,,estimate_only,1,1,0,0,0
+kedm.org,Third country,US,,estimate_only,1,1,0,0,0
+keighleynews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+kelownacapnews.com,Third country,CA,,estimate_only,1,1,0,0,1
+kenw.org,Third country,US,,estimate_only,1,1,0,0,0
+kfm.co.ug,Third country,UG,UG,estimate_domain_agree,1,1,0,0,0
+kgou.org,Third country,US,,estimate_only,1,1,0,0,0
+khaleejtimes.com,Third country,AE,,estimate_only,1,1,0,0,0
+kidderminstershuttle.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+kilburntimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+kimberleybulletin.com,Third country,CA,,estimate_only,1,1,0,0,1
+kioa.com,Third country,US,,estimate_only,1,1,0,0,1
+kirovograd.net,Third country,UP,,estimate_only,1,1,0,0,0
+klove.com,Third country,US,,estimate_only,1,1,0,0,0
+kmib.co.kr,Third country,KS,KS,estimate_domain_agree,1,1,0,0,0
+kmit.com,Third country,US,,estimate_only,1,1,0,0,1
+kmuw.org,Third country,US,,estimate_only,1,1,0,0,0
+kmxt.org,Third country,US,,estimate_only,1,1,0,0,0
+knpr.org,Third country,US,,estimate_only,1,1,0,0,0
+koamnewsnow.com,Third country,US,,estimate_only,1,1,0,0,1
+kohajone.com,Third country,AL,,estimate_only,1,1,0,0,0
+koimoi.com,Third country,IN,,estimate_only,1,1,0,0,0
+kokomotribune.com,Third country,US,,estimate_only,1,1,0,0,1
+kool98.com,Third country,US,,estimate_only,1,1,0,0,1
+kp.ua,Third country,UP,UP,estimate_domain_agree,1,1,0,0,0
+kpbs.org,Third country,US,,estimate_only,1,1,0,0,0
+krdo.com,Third country,US,,estimate_only,1,1,0,0,0
+ksat.com,Third country,US,,estimate_only,1,1,0,0,0
+ksl.com,Third country,US,,estimate_only,1,1,0,0,1
+ksmu.org,Third country,US,,estimate_only,1,1,0,0,0
+kten.com,Third country,US,,estimate_only,1,1,0,0,0
+kuaf.com,Third country,US,,estimate_only,1,1,0,0,0
+kunc.org,Third country,US,,estimate_only,1,1,0,0,0
+kurir.mk,Third country,MK,MK,estimate_domain_agree,1,1,0,0,1
+kurv.com,Third country,US,,estimate_only,1,1,0,0,1
+kvia.com,Third country,US,,estimate_only,1,1,0,0,0
+kvnf.org,Third country,US,,estimate_only,1,1,0,0,0
+kvpr.org,Third country,US,,estimate_only,1,1,0,0,0
+kwbu.org,Third country,US,,estimate_only,1,1,0,0,0
+kwit.org,Third country,US,,estimate_only,1,1,0,0,0
+kzyx.org,Third country,US,,estimate_only,1,1,0,0,0
+la-razon.com,Third country,BL,,estimate_only,1,1,0,0,0
+lacrossetribune.com,Third country,US,,estimate_only,1,1,0,0,1
+ladysmithchronicle.com,Third country,CA,,estimate_only,1,1,0,0,1
+lahainanews.com,Third country,US,,estimate_only,1,1,0,0,1
+lanacion.com.ar,Third country,AR,AR,estimate_domain_agree,1,1,0,0,0
+lancashiretelegraph.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+lanouvelle.net,Third country,CA,,estimate_only,1,1,0,0,1
+lanouvelletribune.info,Third country,BN,,estimate_only,1,1,0,0,1
+lapatilla.com,Third country,VE,,estimate_only,1,1,0,0,0
+lapsi.al,Third country,,AL,domain_only,1,1,0,0,0
+larazon.es,Third country,SP,SP,estimate_domain_agree,1,1,0,0,0
+larepublica.co,Third country,CO,CO,estimate_domain_agree,1,1,0,0,0
+latimes.com,Third country,US,,estimate_only,1,1,0,0,0
+latinamericanpost.com,Third country,US,,estimate_only,1,1,0,0,0
+laverdad.es,Third country,SP,SP,estimate_domain_agree,1,1,0,0,0
+lavoixdusud.com,Third country,CA,,estimate_only,1,1,0,0,1
+lavoz.com.ar,Third country,AR,AR,estimate_domain_agree,1,1,0,0,0
+lazer1033.com,Third country,US,,estimate_only,1,1,0,0,1
+lazer993.com,Third country,US,,estimate_only,1,1,0,0,1
+leaderlive.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+leadership.ng,Third country,NI,NI,estimate_domain_agree,1,1,0,0,0
+lechodemaskinonge.com,Third country,CA,,estimate_only,1,1,0,0,1
+lecourrier.vn,Third country,VM,VM,estimate_domain_agree,1,1,0,0,1
+lecourriersud.com,Third country,CA,,estimate_only,1,1,0,0,1
+lefaso.net,Third country,UV,,estimate_only,1,1,0,0,0
+legit.ng,Third country,NI,NI,estimate_domain_agree,1,1,0,0,0
+leighjournal.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+lematin.ch,Third country,SZ,SZ,estimate_domain_agree,1,1,0,0,0
+lemauricien.com,Third country,MP,,estimate_only,1,1,0,0,0
+lequotidien-oran.com,Third country,AG,,estimate_only,1,1,0,0,1
+lequotidien.sn,Third country,SG,SG,estimate_domain_agree,1,1,0,0,1
+lerefletdulac.com,Third country,CA,,estimate_only,1,1,0,0,1
+lesoleil.sn,Third country,SG,SG,estimate_domain_agree,1,1,0,0,0
+lessentiel.lu,Third country,LU,LU,estimate_domain_agree,1,1,0,0,0
+lethbridgeherald.com,Third country,CA,,estimate_only,1,1,0,0,1
+levenementprecis.com,Third country,BN,,estimate_only,1,1,0,0,1
+lex18.com,Third country,US,,estimate_only,1,1,0,0,1
+lexology.com,Third country,US,,estimate_only,1,1,0,0,0
+lgbtqnation.com,Third country,US,,estimate_only,1,1,0,0,0
+lhebdodustmaurice.com,Third country,CA,,estimate_only,1,1,0,0,1
+lhebdojournal.com,Third country,CA,,estimate_only,1,1,0,0,1
+libertatea.ro,Third country,RO,RO,estimate_domain_agree,1,1,0,0,0
+lidovky.cz,Third country,EZ,EZ,estimate_domain_agree,1,1,0,0,0
+liga.net,Third country,UP,,estimate_only,1,1,0,0,0
+listindiario.com,Third country,US,,estimate_only,1,1,0,0,0
+literock973.com,Third country,US,,estimate_only,1,1,0,0,1
+liverpoolecho.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+lockhaven.com,Third country,US,,estimate_only,1,1,0,0,1
+loksatta.com,Third country,IN,,estimate_only,1,1,0,0,0
+lrt.lt,Third country,LH,LH,estimate_domain_agree,1,1,0,0,0
+ludlowadvertiser.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+lufkindailynews.com,Third country,US,,estimate_only,1,1,0,0,1
+lusakatimes.com,Third country,ZA,,estimate_only,1,1,0,0,1
+madata.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+magyarnemzet.hu,Third country,,HU,domain_only,1,1,0,0,0
+malaymail.com,Third country,MY,,estimate_only,1,1,0,0,0
+maldonandburnhamstandard.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+malverngazette.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+manaonline.gov.mw,Third country,MI,MI,estimate_domain_agree,1,1,0,0,0
+manchestereveningnews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+mapleridgenews.com,Third country,CA,,estimate_only,1,1,0,0,1
+marianne.net,Third country,FR,,estimate_only,1,1,0,0,0
+marieclaire.com,Third country,US,,estimate_only,1,1,0,0,0
+marthastewart.com,Third country,US,,estimate_only,1,1,0,0,0
+mauinews.com,Third country,US,,estimate_only,1,1,0,0,1
+mb.com.ph,Third country,RP,RP,estimate_domain_agree,1,1,0,0,1
+mcalesternews.com,Third country,US,,estimate_only,1,1,0,0,1
+mckinsey.com,Third country,US,,estimate_only,1,1,0,0,0
+meadvilletribune.com,Third country,US,,estimate_only,1,1,0,0,1
+medicinehatnews.com,Third country,CA,,estimate_only,1,1,0,0,1
+medscape.com,Third country,US,,estimate_only,1,1,0,0,0
+meedia.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,0
+memri.org,Third country,RS,,estimate_only,1,1,0,0,0
+mena.org.eg,Third country,EG,EG,estimate_domain_agree,1,1,0,0,0
+meobserver.org,Third country,EG,,estimate_only,1,1,0,0,1
+mercurynews.com,Third country,US,,estimate_only,1,1,0,0,0
+messengernewspapers.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+middle-east-online.com,Third country,IZ,,estimate_only,1,1,0,0,0
+milfordmercury.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+military.com,Third country,US,,estimate_only,1,1,0,0,0
+miningjournal.net,Third country,US,,estimate_only,1,1,0,0,1
+miningweekly.com,Third country,SF,,estimate_only,1,1,0,0,1
+mirror.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+mises.org,Third country,US,,estimate_only,1,1,0,0,0
+missioncityrecord.com,Third country,CA,,estimate_only,1,1,0,0,1
+mix1063.com,Third country,US,,estimate_only,1,1,0,0,1
+mkd.mk,Third country,MK,MK,estimate_domain_agree,1,1,0,0,1
+money.pl,Third country,PL,PL,estimate_domain_agree,1,1,0,0,0
+moottori.fi,Third country,FI,FI,estimate_domain_agree,1,1,0,0,0
+more1049.com,Third country,US,,estimate_only,1,1,0,0,1
+more961.com,Third country,US,,estimate_only,1,1,0,0,1
+morningstaronline.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+morungexpress.com,Third country,IN,,estimate_only,1,1,0,0,0
+moya-planeta.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,0
+mprnews.org,Third country,US,,estimate_only,1,1,0,0,0
+mt.co.kr,Third country,KS,KS,estimate_domain_agree,1,1,0,0,0
+mult-kor.hu,Third country,HU,HU,estimate_domain_agree,1,1,0,0,0
+mustaqila.com,Third country,IZ,,estimate_only,1,1,0,0,0
+mynspr.org,Third country,US,,estimate_only,1,1,0,0,0
+mytashkent.uz,Third country,UZ,UZ,estimate_domain_agree,1,1,0,0,0
+naija247news.com,Third country,NI,,estimate_only,1,1,0,0,0
+namibian.com.na,Third country,WA,WA,estimate_domain_agree,1,1,0,0,1
+nanaimobulletin.com,Third country,CA,,estimate_only,1,1,0,0,1
+naturalgasworld.com,Third country,RS,,estimate_only,1,1,0,0,0
+naukawpolsce.pl,Third country,,PL,domain_only,1,1,0,0,0
+nbcchicago.com,Third country,US,,estimate_only,1,1,0,0,1
+nbcdfw.com,Third country,US,,estimate_only,1,1,0,0,1
+nbcmiami.com,Third country,US,,estimate_only,1,1,0,0,1
+nbcsandiego.com,Third country,US,,estimate_only,1,1,0,0,0
+ncnewsonline.com,Third country,US,,estimate_only,1,1,0,0,1
+ndi.org,Third country,US,,estimate_only,1,1,0,0,0
+nehandaradio.com,Third country,ZI,,estimate_only,1,1,0,0,0
+neoskosmos.com,Third country,GR,,estimate_only,1,1,0,0,1
+neowin.net,Third country,US,,estimate_only,1,1,0,0,0
+nepalitimes.com,Third country,NP,,estimate_only,1,1,0,0,1
+net.hr,Third country,HR,HR,estimate_domain_agree,1,1,0,0,0
+netindia123.com,Third country,IN,,estimate_only,1,1,0,0,0
+netpress.com.mk,Third country,MK,MK,estimate_domain_agree,1,1,0,0,0
+nettavisen.no,Third country,NO,NO,estimate_domain_agree,1,1,0,0,0
+newhamburgindependent.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,0
+newkerala.com,Third country,IN,,estimate_only,1,1,0,0,0
+news-gazette.com,Third country,US,,estimate_only,1,1,0,0,1
+news8000.com,Third country,US,,estimate_only,1,1,0,0,0
+newsandstar.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+newsargus.com,Third country,US,,estimate_only,1,1,0,0,0
+newsbytes.ph,Third country,RP,RP,estimate_domain_agree,1,1,0,0,0
+newsinvestigatorsng.com,Third country,NI,,estimate_only,1,1,0,0,0
+newsit.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+newspressnow.com,Third country,US,,estimate_only,1,1,0,0,1
+newstribune.com,Third country,US,,estimate_only,1,1,0,0,0
+newsweek.com,Third country,US,,estimate_only,1,1,0,0,0
+newtalk.tw,Third country,TW,TW,estimate_domain_agree,1,1,0,0,0
+newzimbabwe.com,Third country,ZI,,estimate_only,1,1,0,0,0
+nezavisen.mk,Third country,,MK,domain_only,1,1,0,0,1
+nhpr.org,Third country,US,,estimate_only,1,1,0,0,0
+niagarafallsreview.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+niagarathisweek.com,Third country,CA,,estimate_only,1,1,0,0,0
+nin.rs,Third country,,RI,domain_only,1,1,0,0,0
+nltimes.nl,Third country,NL,NL,estimate_domain_agree,1,1,0,0,0
+nny360.com,Third country,US,,estimate_only,1,1,0,0,1
+northafricapost.com,Third country,MO,,estimate_only,1,1,0,0,0
+northbaynipissing.com,Third country,CA,,estimate_only,1,1,0,0,0
+northcountrypublicradio.org,Third country,US,,estimate_only,1,1,0,0,0
+northern-times.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+northernpublicradio.org,Third country,US,,estimate_only,1,1,0,0,0
+northislandgazette.com,Third country,CA,,estimate_only,1,1,0,0,1
+northumberlandnews.com,Third country,CA,,estimate_only,1,1,0,0,0
+northwaleschronicle.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+northwalespioneer.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+northwichguardian.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+noticiabrasil.net.br,Third country,,BR,domain_only,1,1,0,0,0
+noticiassin.com,Third country,US,,estimate_only,1,1,0,0,0
+nra.lv,Third country,LG,LG,estimate_domain_agree,1,1,0,0,0
+nsknews.info,Third country,RS,,estimate_only,1,1,0,0,0
+ntv.com.tr,Third country,TU,TU,estimate_domain_agree,1,1,0,0,0
+ntvbd.com,Third country,BG,,estimate_only,1,1,0,0,0
+nuclear-news.net,Third country,JA,,estimate_only,1,1,0,0,0
+nujournal.com,Third country,US,,estimate_only,1,1,0,0,1
+nvdaily.com,Third country,US,,estimate_only,1,1,0,0,1
+nwemail.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+nyan.ax,Third country,FI,,estimate_only,1,1,0,0,0
+nydailynews.com,Third country,US,,estimate_only,1,1,0,0,0
+nypost.com,Third country,US,,estimate_only,1,1,0,0,1
+observer.ug,Third country,UG,UG,estimate_domain_agree,1,1,0,0,0
+ocregister.com,Third country,US,,estimate_only,1,1,0,0,0
+oeildafrique.com,Third country,CF,,estimate_only,1,1,0,0,1
+ogunhaber.com,Third country,TU,,estimate_only,1,1,0,0,0
+oikoumene.org,Third country,SZ,,estimate_only,1,1,0,0,1
+oilprice.com,Third country,US,,estimate_only,1,1,0,0,0
+oireachtas.ie,Third country,EI,EI,estimate_domain_agree,1,1,0,0,1
+oklahomacitysun.com,Third country,US,,estimate_only,1,1,0,0,0
+ominecaexpress.com,Third country,CA,,estimate_only,1,1,0,0,1
+onlinekhabar.com,Third country,NP,,estimate_only,1,1,0,0,1
+opednews.com,Third country,US,,estimate_only,1,1,0,0,1
+opendemocracy.net,Third country,UK,,estimate_only,1,1,0,0,0
+openpr.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,0
+opinion.al,Third country,,AL,domain_only,1,1,0,0,0
+opportunitiesforafricans.com,Third country,NI,,estimate_only,1,1,0,0,0
+orlandosentinel.com,Third country,US,,estimate_only,1,1,0,0,0
+ovb-online.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,0
+oxfordmail.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+padovanews.it,Third country,IT,IT,estimate_domain_agree,1,1,0,0,0
+pakasiatimes.com,Third country,PK,,estimate_only,1,1,0,0,0
+panamaamerica.com.pa,Third country,PM,PM,estimate_domain_agree,1,1,0,0,0
+pasadenastarnews.com,Third country,US,,estimate_only,1,1,0,0,0
+paultan.org,Third country,MY,,estimate_only,1,1,0,0,0
+pb.pl,Third country,PL,PL,estimate_domain_agree,1,1,0,0,0
+pcnen.com,Third country,MJ,,estimate_only,1,1,0,0,0
+peacearchnews.com,Third country,CA,,estimate_only,1,1,0,0,1
+peeblesshirenews.com,Third country,UK,,estimate_only,1,1,0,0,1
+penarthtimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+peru21.pe,Third country,PE,PE,estimate_domain_agree,1,1,0,0,0
+philstar.com,Third country,RP,,estimate_only,1,1,0,0,0
+phnompenhpost.com,Third country,CB,,estimate_only,1,1,0,0,0
+piatafinanciara.ro,Third country,RO,RO,estimate_domain_agree,1,1,0,0,0
+pitchfork.com,Third country,US,,estimate_only,1,1,0,0,0
+planoinformativo.com,Third country,MX,,estimate_only,1,1,0,0,0
+popspoken.com,Third country,SN,,estimate_only,1,1,0,0,0
+portfolio.hu,Third country,HU,HU,estimate_domain_agree,1,1,0,0,0
+postregister.com,Third country,US,,estimate_only,1,1,0,0,1
+pqbnews.com,Third country,CA,,estimate_only,1,1,0,0,1
+prescottenews.com,Third country,US,,estimate_only,1,1,0,0,1
+pressenza.com,Third country,US,,estimate_only,1,1,0,0,0
+pressherald.com,Third country,US,,estimate_only,1,1,0,0,0
+presstelegram.com,Third country,US,,estimate_only,1,1,0,0,0
+prpeak.com,Third country,CA,,estimate_only,1,1,0,0,1
+publico.es,Third country,SP,SP,estimate_domain_agree,1,1,0,0,0
+publicradioeast.org,Third country,US,,estimate_only,1,1,0,0,0
+pulse.com.gh,Third country,GH,GH,estimate_domain_agree,1,1,0,0,0
+punjabkesari.in,Third country,IN,IN,estimate_domain_agree,1,1,0,0,0
+q101online.com,Third country,US,,estimate_only,1,1,0,0,1
+q108.com,Third country,US,,estimate_only,1,1,0,0,1
+qaranimo.com,Third country,SO,,estimate_only,1,1,0,0,0
+quesnelobserver.com,Third country,CA,,estimate_only,1,1,0,0,1
+quotidiano.net,Third country,IT,,estimate_only,1,1,0,0,0
+radiofarda.com,Third country,IR,,estimate_only,1,1,0,0,1
+radiolasithi.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+radiookapi.net,Third country,CG,,estimate_only,1,1,0,0,1
+railwaygazette.com,Third country,UK,,estimate_only,1,1,0,0,0
+rappler.com,Third country,RP,,estimate_only,1,1,0,0,0
+rashtriyakhabar.com,Third country,IN,,estimate_only,1,1,0,0,0
+rbc.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,1
+readingchronicle.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+record.com.mx,Third country,MX,MX,estimate_domain_agree,1,1,0,0,0
+recorderonline.com,Third country,US,,estimate_only,1,1,0,0,1
+redditchadvertiser.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+regnum.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,0
+renews.biz,Third country,UK,,estimate_only,1,1,0,0,0
+resilience.org,Third country,US,,estimate_only,1,1,0,0,0
+respublika.lt,Third country,LH,LH,estimate_domain_agree,1,1,0,0,1
+rewind1051.com,Third country,US,,estimate_only,1,1,0,0,1
+rewind943.com,Third country,US,,estimate_only,1,1,0,0,1
+rfi.fr,Third country,FR,FR,estimate_domain_agree,1,1,0,0,1
+rg.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,0
+rhyljournal.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+rhythmsmonthly.com,Third country,TW,,estimate_only,1,1,0,0,0
+richmondandtwickenhamtimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+richmondregister.com,Third country,US,,estimate_only,1,1,0,0,1
+rionegro.com.ar,Third country,AR,AR,estimate_domain_agree,1,1,0,0,0
+riotimesonline.com,Third country,BR,,estimate_only,1,1,0,0,0
+rnz.co.nz,Third country,NZ,NZ,estimate_domain_agree,1,1,0,0,0
+rock102.com,Third country,US,,estimate_only,1,1,0,0,1
+rodiaki.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+rogerebert.com,Third country,US,,estimate_only,1,1,0,0,1
+ross-shirejournal.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+rtcg.me,Third country,MJ,MJ,estimate_domain_agree,1,1,0,0,0
+runcornandwidnesworld.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+runews24.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,0
+runwaygirlnetwork.com,Third country,US,,estimate_only,1,1,0,0,0
+sabah.com.tr,Third country,TU,TU,estimate_domain_agree,1,1,0,0,1
+sachalayatan.com,Third country,BG,,estimate_only,1,1,0,0,0
+saipantribune.com,Third country,US,,estimate_only,1,1,0,0,0
+salisburyjournal.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+sandiegosun.com,Third country,US,,estimate_only,1,1,0,0,0
+sandiegouniontribune.com,Third country,US,,estimate_only,1,1,0,0,0
+saobserver.net,Third country,CA,,estimate_only,1,1,0,0,1
+sbsun.com,Third country,US,,estimate_only,1,1,0,0,0
+scientificamerican.com,Third country,US,,estimate_only,1,1,0,0,0
+scroll.in,Third country,IN,IN,estimate_domain_agree,1,1,0,0,1
+securitycouncilreport.org,Third country,SU,,estimate_only,1,1,0,0,1
+segye.com,Third country,KS,,estimate_only,1,1,0,0,0
+semissourian.com,Third country,US,,estimate_only,1,1,0,0,1
+sevastopol.su,Third country,UP,,estimate_only,1,1,0,0,0
+sgvtribune.com,Third country,US,,estimate_only,1,1,0,0,0
+skepticalscience.com,Third country,US,,estimate_only,1,1,0,0,1
+skift.com,Third country,US,,estimate_only,1,1,0,0,1
+slate.fr,Third country,FR,FR,estimate_domain_agree,1,1,0,0,0
+sme.sk,Third country,LO,LO,estimate_domain_agree,1,1,0,0,0
+socialistalternative.org,Third country,US,,estimate_only,1,1,0,0,0
+somalilandsun.com,Third country,SO,,estimate_only,1,1,0,0,0
+somersetcountygazette.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+sookenewsmirror.com,Third country,CA,,estimate_only,1,1,0,0,1
+sott.net,Third country,US,,estimate_only,1,1,0,0,0
+southcarolinapublicradio.org,Third country,US,,estimate_only,1,1,0,0,0
+southcoastregister.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+southwalesargus.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+southwalesguardian.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+space.com,Third country,US,,estimate_only,1,1,0,0,1
+spacedaily.com,Third country,US,,estimate_only,1,1,0,0,1
+spektrum.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,0
+spiegel.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,1
+spokanepublicradio.org,Third country,US,,estimate_only,1,1,0,0,0
+spokesman.com,Third country,US,,estimate_only,1,1,0,0,0
+sprudge.com,Third country,US,,estimate_only,1,1,0,0,0
+sputnikportal.rs,Third country,,RI,domain_only,1,1,0,0,0
+stabroeknews.com,Third country,GY,,estimate_only,1,1,0,0,0
+stalbansreview.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+standard.net.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+standardspeaker.com,Third country,US,,estimate_only,1,1,0,0,0
+stanradar.com,Third country,RS,,estimate_only,1,1,0,0,0
+star1025.com,Third country,US,,estimate_only,1,1,0,0,1
+star997.com,Third country,US,,estimate_only,1,1,0,0,1
+stattimes.com,Third country,US,,estimate_only,1,1,0,0,0
+stcatharinesstandard.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+sthelensstar.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+stimson.org,Third country,US,,estimate_only,1,1,0,0,0
+stiripesurse.ro,Third country,RO,RO,estimate_domain_agree,1,1,0,0,0
+stourbridgenews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+stripes.com,Third country,US,,estimate_only,1,1,0,0,0
+stroudnewsandjournal.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+sueddeutsche.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,0
+suedtirolnews.it,Third country,IT,IT,estimate_domain_agree,1,1,0,0,0
+sunny95.com,Third country,US,,estimate_only,1,1,0,0,1
+sunnykeene.com,Third country,US,,estimate_only,1,1,0,0,1
+surinametimes.com,Third country,NS,,estimate_only,1,1,0,0,0
+surreycomet.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+sverigesradio.se,Third country,SW,SW,estimate_domain_agree,1,1,0,0,0
+swindonadvertiser.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+t24.com.tr,Third country,TU,TU,estimate_domain_agree,1,1,0,0,0
+ta3.com,Third country,LO,,estimate_only,1,1,0,0,0
+taipeitimes.com,Third country,TW,,estimate_only,1,1,0,0,0
+taiwannews.com.tw,Third country,TW,TW,estimate_domain_agree,1,1,0,0,0
+taxydromos.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+taz.de,Third country,GM,GM,estimate_domain_agree,1,1,1,0,0
+tazabek.kg,Third country,KG,KG,estimate_domain_agree,1,1,0,0,0
+tdtnews.com,Third country,US,,estimate_only,1,1,0,0,1
+techcrunch.com,Third country,US,,estimate_only,1,1,0,0,0
+techrepublic.com,Third country,US,,estimate_only,1,1,0,0,0
+telemundoatlanta.com,Third country,US,,estimate_only,1,1,0,0,0
+teraz.sk,Third country,LO,LO,estimate_domain_agree,1,1,0,0,1
+terracestandard.com,Third country,CA,,estimate_only,1,1,0,0,1
+texarkanagazette.com,Third country,US,,estimate_only,1,1,0,0,1
+thaipbs.or.th,Third country,TH,TH,estimate_domain_agree,1,1,0,0,0
+theafricangourmet.com,Third country,RW,,estimate_only,1,1,0,0,1
+theage.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+thealabamabaptist.org,Third country,US,,estimate_only,1,1,0,0,0
+thearabtribune.com,Third country,US,,estimate_only,1,1,0,0,0
+theargus.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+thebest.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+theboltonnews.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+theborneopost.com,Third country,MY,,estimate_only,1,1,1,1,1
+thecitizen.co.tz,Third country,TZ,TZ,estimate_domain_agree,1,1,0,0,0
+theconversation.com,Third country,AS,,estimate_only,1,1,0,0,1
+thecourier.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+thedickinsonpress.com,Third country,US,,estimate_only,1,1,0,0,0
+thedigitalcourier.com,Third country,US,,estimate_only,1,1,0,0,0
+theeagleonline.com.ng,Third country,NI,NI,estimate_domain_agree,1,1,0,0,0
+thefox1049.com,Third country,US,,estimate_only,1,1,0,0,1
+thefreepress.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+thehimalayantimes.com,Third country,NP,,estimate_only,1,1,0,0,1
+theifp.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,0
+themilitant.com,Third country,US,,estimate_only,1,1,0,0,0
+thenationonlineng.net,Third country,NI,,estimate_only,1,1,0,0,1
+thenewslens.com,Third country,TW,,estimate_only,1,1,0,0,0
+thenextweb.com,Third country,US,,estimate_only,1,1,0,0,0
+thenightly.com.au,Third country,,AS,domain_only,1,1,0,0,0
+thenorthernecho.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+thephuketnews.com,Third country,TH,,estimate_only,1,1,0,0,0
+thepoint.gm,Third country,GA,GA,estimate_domain_agree,1,1,0,0,1
+theprogress.com,Third country,CA,,estimate_only,1,1,0,0,1
+thereminder.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+therepublic.com,Third country,US,,estimate_only,1,1,0,0,1
+thesierraleonetelegraph.com,Third country,SL,,estimate_only,1,1,0,0,0
+thesouthafrican.com,Third country,SF,,estimate_only,1,1,0,0,0
+thespec.com,Third country,CA,,estimate_only,1,1,0,0,1
+thestandard.co.zw,Third country,ZI,ZI,estimate_domain_agree,1,1,0,0,0
+thestatesman.com,Third country,IN,,estimate_only,1,1,0,0,0
+thetimes-tribune.com,Third country,US,,estimate_only,1,1,0,0,0
+thetottenhamindependent.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+thevoiceslu.com,Third country,ST,,estimate_only,1,1,0,0,0
+theweek.com,Third country,US,,estimate_only,1,1,0,0,0
+thewesterlysun.com,Third country,US,,estimate_only,1,1,0,0,1
+thewestmorlandgazette.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+thewestonmercury.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+theworldfolio.com,Third country,JA,,estimate_only,1,1,0,0,0
+thezimbabwemail.com,Third country,ZI,,estimate_only,1,1,0,0,0
+thisislocallondon.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+thisiswiltshire.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+thompsoncitizen.net,Third country,CA,,estimate_only,1,1,0,0,1
+thueringer-allgemeine.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,0
+time.kz,Third country,KZ,KZ,estimate_domain_agree,1,1,0,0,0
+timeout.com,Third country,UK,,estimate_only,1,1,0,0,0
+times-series.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+times.co.sz,Third country,WZ,WZ,estimate_domain_agree,1,1,0,0,0
+timescall.com,Third country,US,,estimate_only,1,1,0,0,0
+timesfreepress.com,Third country,US,,estimate_only,1,1,0,0,1
+timesheraldonline.com,Third country,US,,estimate_only,1,1,0,0,0
+timesleaderonline.com,Third country,US,,estimate_only,1,1,0,0,1
+timeslive.co.za,Third country,SF,SF,estimate_domain_agree,1,1,0,0,0
+timesofearth.com,Third country,SY,,estimate_only,1,1,0,0,0
+tivysideadvertiser.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+tlz.de,Third country,GM,GM,estimate_domain_agree,1,1,0,0,0
+tnbiz.cz,Third country,EZ,EZ,estimate_domain_agree,1,1,1,0,0
+tnnthailand.com,Third country,SP,,estimate_only,1,1,1,0,0
+topontiki.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+toronto.com,Third country,CA,,estimate_only,1,1,0,0,0
+tothemaonline.com,Third country,CY,,estimate_only,1,1,0,0,0
+travelandleisure.com,Third country,US,,estimate_only,1,1,0,0,0
+traveldailymedia.com,Third country,UK,,estimate_only,1,1,0,0,0
+traveldailynews.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+travelweekly.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,1
+tribdem.com,Third country,US,,estimate_only,1,1,0,0,1
+tribune.com.pk,Third country,PK,PK,estimate_domain_agree,1,1,0,0,0
+tribuneindia.com,Third country,IN,,estimate_only,1,1,0,0,1
+trud-ost.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,0
+tspr.org,Third country,US,,estimate_only,1,1,0,0,0
+tucsonsentinel.com,Third country,US,,estimate_only,1,1,0,0,1
+turkiyegazetesi.com.tr,Third country,TU,TU,estimate_domain_agree,1,1,0,0,0
+tvanouvelles.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,0
+tvxs.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+twincities.com,Third country,US,,estimate_only,1,1,0,0,0
+tyden.cz,Third country,EZ,EZ,estimate_domain_agree,1,1,0,0,0
+typosthes.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+tyrepress.com,Third country,UK,,estimate_only,1,1,1,1,1
+udn.com,Third country,TW,,estimate_only,1,1,0,0,0
+ultimasnoticias.com.ve,Third country,VE,VE,estimate_domain_agree,1,1,0,0,0
+un.org,Third country,SY,,estimate_only,1,1,0,0,1
+unc.edu,Third country,US,,estimate_only,1,1,0,0,1
+undercurrentnews.com,Third country,US,,estimate_only,1,1,0,0,0
+unn.ua,Third country,,UP,domain_only,1,1,0,0,0
+upenn.edu,Third country,US,,estimate_only,1,1,0,0,1
+upr.org,Third country,US,,estimate_only,1,1,0,0,0
+velvet.hu,Third country,HU,HU,estimate_domain_agree,1,1,0,0,0
+vernonmorningstar.com,Third country,CA,,estimate_only,1,1,0,0,1
+vesti.ru,Third country,RS,RS,estimate_domain_agree,1,1,0,0,0
+vg.hu,Third country,HU,HU,estimate_domain_agree,1,1,0,0,0
+vicnews.com,Third country,CA,,estimate_only,1,1,0,0,1
+vnewsbd.com,Third country,BG,,estimate_only,1,1,0,0,0
+voakorea.com,Third country,KS,,estimate_only,1,1,0,0,0
+voazimbabwe.com,Third country,ZI,,estimate_only,1,1,0,0,1
+vol.at,Third country,AU,AU,estimate_domain_agree,1,1,0,0,0
+volcanocafe.org,Third country,IC,,estimate_only,1,1,0,0,1
+voria.gr,Third country,GR,GR,estimate_domain_agree,1,1,0,0,0
+vozdeamerica.com,Third country,US,,estimate_only,1,1,0,0,0
+vozpopuli.com,Third country,SP,,estimate_only,1,1,0,0,0
+wacotrib.com,Third country,US,,estimate_only,1,1,0,0,1
+wandsworthguardian.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+warringtonguardian.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+washingtoninformer.com,Third country,US,,estimate_only,1,1,0,0,0
+washtimesherald.com,Third country,US,,estimate_only,1,1,0,0,1
+watfordobserver.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+watoday.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+watson.ch,Third country,SZ,SZ,estimate_domain_agree,1,1,0,0,0
+wbaa.org,Third country,US,,estimate_only,1,1,0,0,0
+wbco.com,Third country,US,,estimate_only,1,1,0,0,1
+wboi.org,Third country,US,,estimate_only,1,1,0,0,0
+wcfcourier.com,Third country,US,,estimate_only,1,1,0,0,1
+wcsufm.org,Third country,US,,estimate_only,1,1,0,0,0
+wdbr.com,Third country,US,,estimate_only,1,1,0,0,1
+wdel.com,Third country,US,,estimate_only,1,1,0,0,1
+wdio.com,Third country,US,,estimate_only,1,1,0,0,1
+wdiy.org,Third country,US,,estimate_only,1,1,0,0,0
+wdrb.com,Third country,US,,estimate_only,1,1,0,0,1
+weatherforddemocrat.com,Third country,US,,estimate_only,1,1,0,0,1
+webindia123.com,Third country,IN,,estimate_only,1,1,0,0,0
+webwire.com,Third country,US,,estimate_only,1,1,0,0,0
+weeklyblitz.net,Third country,IS,,estimate_only,1,1,0,0,1
+weeklyworker.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,0
+wellandtribune.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+wellingtontimes.com.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,0
+weny.com,Third country,US,,estimate_only,1,1,0,0,1
+westerlynews.ca,Third country,CA,CA,estimate_domain_agree,1,1,0,0,1
+westernpeople.ie,Third country,EI,EI,estimate_domain_agree,1,1,0,0,0
+wfin.com,Third country,US,,estimate_only,1,1,0,0,1
+wharfedaleobserver.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+whec.com,Third country,US,,estimate_only,1,1,0,0,1
+whio.com,Third country,US,,estimate_only,1,1,0,0,1
+whittierdailynews.com,Third country,US,,estimate_only,1,1,0,0,0
+whmp.com,Third country,US,,estimate_only,1,1,0,0,1
+whtimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+wilsoncenter.org,Third country,US,,estimate_only,1,1,0,0,0
+wiltsglosstandard.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+wiltshiretimes.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+wimbledonguardian.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+windermeresun.com,Third country,US,,estimate_only,1,1,0,0,0
+wingsmagazine.com,Third country,CA,,estimate_only,1,1,0,0,1
+wirralglobe.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+wirtualnemedia.pl,Third country,PL,PL,estimate_domain_agree,1,1,0,0,0
+witneygazette.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+wkms.org,Third country,US,,estimate_only,1,1,0,0,0
+wkne.com,Third country,US,,estimate_only,1,1,0,0,1
+wknofm.org,Third country,US,,estimate_only,1,1,0,0,0
+wkyufm.org,Third country,US,,estimate_only,1,1,0,0,0
+wlrh.org,Third country,US,,estimate_only,1,1,0,0,0
+wlrn.org,Third country,US,,estimate_only,1,1,0,0,0
+wltribune.com,Third country,CA,,estimate_only,1,1,0,0,1
+wmuk.org,Third country,US,,estimate_only,1,1,0,0,0
+wn.com,Third country,US,,estimate_only,1,1,1,1,1
+wndu.com,Third country,US,,estimate_only,1,1,0,0,1
+wnewsj.com,Third country,US,,estimate_only,1,1,0,0,1
+wnp.pl,Third country,PL,PL,estimate_domain_agree,1,1,0,0,0
+wordpress.com,Third country,US,,estimate_only,1,1,0,0,0
+worldcement.com,Third country,US,,estimate_only,1,1,0,0,1
+worldfoodprize.org,Third country,US,,estimate_only,1,1,0,0,1
+worth.com,Third country,US,,estimate_only,1,1,0,0,1
+wprl.org,Third country,US,,estimate_only,1,1,0,0,0
+wpsdlocal6.com,Third country,US,,estimate_only,1,1,0,0,0
+wqcs.org,Third country,US,,estimate_only,1,1,0,0,0
+wqel.com,Third country,US,,estimate_only,1,1,0,0,1
+wral.com,Third country,US,,estimate_only,1,1,0,0,0
+wrkf.org,Third country,US,,estimate_only,1,1,0,0,0
+wrsi.com,Third country,US,,estimate_only,1,1,0,0,1
+wrvo.org,Third country,US,,estimate_only,1,1,0,0,0
+wsbtv.com,Third country,US,,estimate_only,1,1,0,0,1
+wsfa.com,Third country,US,,estimate_only,1,1,0,0,1
+wsiu.org,Third country,US,,estimate_only,1,1,0,0,0
+wsvn.com,Third country,US,,estimate_only,1,1,0,0,1
+wuft.org,Third country,US,,estimate_only,1,1,0,0,0
+wuky.org,Third country,US,,estimate_only,1,1,0,0,0
+wusf.org,Third country,US,,estimate_only,1,1,0,0,0
+wutc.org,Third country,US,,estimate_only,1,1,0,0,0
+wuwf.org,Third country,US,,estimate_only,1,1,0,0,0
+wvasfm.org,Third country,US,,estimate_only,1,1,0,0,0
+wvgazettemail.com,Third country,US,,estimate_only,1,1,0,0,1
+wvik.org,Third country,US,,estimate_only,1,1,0,0,0
+wvnews.com,Third country,US,,estimate_only,1,1,0,0,1
+wvtf.org,Third country,US,,estimate_only,1,1,0,0,0
+wvxu.org,Third country,US,,estimate_only,1,1,0,0,0
+www.gov.za,Third country,SF,SF,estimate_domain_agree,1,1,0,0,0
+wxxinews.org,Third country,US,,estimate_only,1,1,0,0,0
+wyomingnews.com,Third country,US,,estimate_only,1,1,0,0,0
+wyomingpublicmedia.org,Third country,US,,estimate_only,1,1,0,0,0
+wypr.org,Third country,US,,estimate_only,1,1,0,0,0
+wyso.org,Third country,US,,estimate_only,1,1,0,0,0
+wysu.org,Third country,US,,estimate_only,1,1,0,0,0
+wz.lviv.ua,Third country,UP,UP,estimate_domain_agree,1,1,0,0,0
+yen.com.gh,Third country,GH,GH,estimate_domain_agree,1,1,0,0,0
+yle.fi,Third country,FI,FI,estimate_domain_agree,1,1,0,0,0
+yorkpress.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+yourdemocracy.net.au,Third country,AS,AS,estimate_domain_agree,1,1,0,0,1
+yourlocalguardian.co.uk,Third country,UK,UK,estimate_domain_agree,1,1,0,0,1
+z955.com,Third country,US,,estimate_only,1,1,0,0,1
+zehabesha.com,Third country,ET,,estimate_only,1,1,0,0,0
+zonebourse.com,Third country,FR,,estimate_only,1,1,0,0,0
+2news.com,Unknown or uncertain,,,unknown,6,6,0,0,6
+thetimes.com,Unknown or uncertain,,,unknown,5,5,0,0,1
+dailymail.co.uk,Unknown or uncertain,US,UK,conflict,4,4,0,0,3
+african.business,Unknown or uncertain,,,unknown,3,3,0,0,0
+chinapress.com.my,Unknown or uncertain,CH,MY,conflict,3,3,0,0,0
+local3news.com,Unknown or uncertain,,,unknown,3,3,0,0,2
+shangbao.com.ph,Unknown or uncertain,CH,RP,conflict,3,3,0,0,1
+thestandard.com.hk,Unknown or uncertain,CH,HK,conflict,3,3,0,0,1
+wdbo.com,Unknown or uncertain,,,unknown,3,3,0,0,3
+arynews.tv,Unknown or uncertain,PK,TV,conflict,2,2,0,0,1
+borneobulletin.com.bn,Unknown or uncertain,US,BX,conflict,2,2,0,0,0
+businesstimes.com.sg,Unknown or uncertain,CH,SN,conflict,2,2,0,0,1
+citizen.digital,Unknown or uncertain,,,unknown,2,2,0,0,1
+enanyang.my,Unknown or uncertain,CH,MY,conflict,2,2,0,0,0
+epochtimes.com.tw,Unknown or uncertain,CH,TW,conflict,2,2,0,0,0
+peopledaily.digital,Unknown or uncertain,,,unknown,2,2,1,1,2
+sina.com.hk,Unknown or uncertain,CH,HK,conflict,2,2,1,0,0
+zaobao.com.sg,Unknown or uncertain,CH,SN,conflict,2,2,0,0,0
+acento.com.do,Unknown or uncertain,US,DR,conflict,1,1,0,0,0
+afriquexxi.info,Unknown or uncertain,,,unknown,1,1,0,0,0
+alaskasnewssource.com,Unknown or uncertain,,,unknown,1,1,0,0,1
+castanetkamloops.net,Unknown or uncertain,,,unknown,1,1,0,0,1
+dunyanews.tv,Unknown or uncertain,PK,TV,conflict,1,1,0,0,0
+egyptian-gazette.com,Unknown or uncertain,,,unknown,1,1,0,0,1
+eju.tv,Unknown or uncertain,BL,TV,conflict,1,1,0,0,0
+elcaribe.com.do,Unknown or uncertain,US,DR,conflict,1,1,0,0,0
+geo.tv,Unknown or uncertain,PK,TV,conflict,1,1,0,0,0
+himara.gr,Unknown or uncertain,AL,GR,conflict,1,1,0,0,0
+hkcna.hk,Unknown or uncertain,CH,HK,conflict,1,1,0,0,0
+holosameryky.com,Unknown or uncertain,,,unknown,1,1,0,0,1
+jacobin.com,Unknown or uncertain,,,unknown,1,1,0,0,0
+lbcgroup.tv,Unknown or uncertain,LE,TV,conflict,1,1,0,0,0
+macaudailytimes.com.mo,Unknown or uncertain,CH,MC,conflict,1,1,0,0,1
+noticiaslatam.lat,Unknown or uncertain,,,unknown,1,1,0,0,0
+orientaldaily.com.my,Unknown or uncertain,CH,MY,conflict,1,1,0,0,0
+sputnikglobe.com,Unknown or uncertain,,,unknown,1,1,0,0,0
+storm.mg,Unknown or uncertain,CH,MA,conflict,1,1,0,0,0
+technews.tw,Unknown or uncertain,CH,TW,conflict,1,1,0,0,0
+tocka.com.mk,Unknown or uncertain,US,MK,conflict,1,1,0,0,0
+todayheadline.co,Unknown or uncertain,US,CO,conflict,1,1,0,0,0
+top-channel.tv,Unknown or uncertain,RI,TV,conflict,1,1,0,0,0
+travel.com.tw,Unknown or uncertain,US,TW,conflict,1,1,0,0,0
+turkhaber.com,Unknown or uncertain,,,unknown,1,1,0,0,0
+wesa.fm,Unknown or uncertain,US,FM,conflict,1,1,0,0,0
+worldnews.net.ph,Unknown or uncertain,CH,RP,conflict,1,1,0,0,0
+wyomingnewsnow.tv,Unknown or uncertain,US,TV,conflict,1,1,0,0,0
+yourdemocracy.net,Unknown or uncertain,,,unknown,1,1,0,0,1

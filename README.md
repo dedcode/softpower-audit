@@ -99,3 +99,13 @@ python3 tests/test_backend.py
 
 The BigQuery grouping query was also validated with synthetic records across
 days, proving that repeated outlets are counted distinctly within a period.
+
+## January 2025 China–Kenya filter pilot
+
+`docs/pilot/` publishes the completed one-month pilot: all 4,122 candidate URLs,
+per-website counts for broad/both-country/only-pair/only-pair-with-place filters,
+CSV downloads, and 24 qualitative article checks (23 bodies and one paywalled
+preview). This static page incurs no live BigQuery queries when browsed. The
+main historical dashboard remains on its original broad counting definition.
+The pilot does not establish filter accuracy; it demonstrates retained relevant
+stories, false positives, excluded relevant coverage and observation-date issues.

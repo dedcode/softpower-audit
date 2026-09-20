@@ -1,0 +1,12 @@
+{
+  "start": "2025-01-01",
+  "end": "2025-01-31",
+  "job_id": "07d5d4da-acee-4a3e-95d6-5f90f6e486bb",
+  "estimated_bytes": 5118847714,
+  "actual_bytes_processed": 5118847714,
+  "actual_bytes_billed": 5119148032,
+  "cache_hit": false,
+  "query_sha256": "7e0b9b2d8b9bed5ad25844a2664e70c9dc8c86c63dafcf0ef0845747fb99d9ab",
+  "mapping_sha256": "7e69d3cb70aebaa50eb6ec9acb58ac98825febad821757428333fca2b36f7e3a",
+  "raw_rows": 4122
+}

@@ -1,0 +1,185 @@
+{
+  "unique_urls": {
+    "Local": {
+      "broad": {
+        "count": 429,
+        "websites": 17
+      },
+      "both": {
+        "count": 178,
+        "websites": 16
+      },
+      "only_pair": {
+        "count": 54,
+        "websites": 9
+      },
+      "only_pair_specific": {
+        "count": 39,
+        "websites": 7
+      },
+      "specific_kenya": {
+        "count": 119,
+        "websites": 12
+      }
+    },
+    "Chinese": {
+      "broad": {
+        "count": 1114,
+        "websites": 157
+      },
+      "both": {
+        "count": 870,
+        "websites": 136
+      },
+      "only_pair": {
+        "count": 69,
+        "websites": 28
+      },
+      "only_pair_specific": {
+        "count": 39,
+        "websites": 8
+      },
+      "specific_kenya": {
+        "count": 403,
+        "websites": 87
+      }
+    },
+    "Third country": {
+      "broad": {
+        "count": 2499,
+        "websites": 1379
+      },
+      "both": {
+        "count": 2499,
+        "websites": 1379
+      },
+      "only_pair": {
+        "count": 47,
+        "websites": 25
+      },
+      "only_pair_specific": {
+        "count": 33,
+        "websites": 15
+      },
+      "specific_kenya": {
+        "count": 860,
+        "websites": 605
+      }
+    },
+    "Unknown or uncertain": {
+      "broad": {
+        "count": 80,
+        "websites": 47
+      },
+      "both": {
+        "count": 80,
+        "websites": 47
+      },
+      "only_pair": {
+        "count": 2,
+        "websites": 2
+      },
+      "only_pair_specific": {
+        "count": 1,
+        "websites": 1
+      },
+      "specific_kenya": {
+        "count": 28,
+        "websites": 17
+      }
+    }
+  },
+  "daily_observations": {
+    "Local": {
+      "broad": {
+        "count": 429,
+        "websites": 17
+      },
+      "both": {
+        "count": 178,
+        "websites": 16
+      },
+      "only_pair": {
+        "count": 54,
+        "websites": 9
+      },
+      "only_pair_specific": {
+        "count": 39,
+        "websites": 7
+      },
+      "specific_kenya": {
+        "count": 119,
+        "websites": 12
+      }
+    },
+    "Chinese": {
+      "broad": {
+        "count": 1114,
+        "websites": 157
+      },
+      "both": {
+        "count": 870,
+        "websites": 136
+      },
+      "only_pair": {
+        "count": 69,
+        "websites": 28
+      },
+      "only_pair_specific": {
+        "count": 39,
+        "websites": 8
+      },
+      "specific_kenya": {
+        "count": 403,
+        "websites": 87
+      }
+    },
+    "Third country": {
+      "broad": {
+        "count": 2499,
+        "websites": 1379
+      },
+      "both": {
+        "count": 2499,
+        "websites": 1379
+      },
+      "only_pair": {
+        "count": 47,
+        "websites": 25
+      },
+      "only_pair_specific": {
+        "count": 33,
+        "websites": 15
+      },
+      "specific_kenya": {
+        "count": 860,
+        "websites": 605
+      }
+    },
+    "Unknown or uncertain": {
+      "broad": {
+        "count": 80,
+        "websites": 47
+      },
+      "both": {
+        "count": 80,
+        "websites": 47
+      },
+      "only_pair": {
+        "count": 2,
+        "websites": 2
+      },
+      "only_pair_specific": {
+        "count": 1,
+        "websites": 1
+      },
+      "specific_kenya": {
+        "count": 28,
+        "websites": 17
+      }
+    }
+  },
+  "baseline_matches_all_outlets": true,
+  "url_count": 4122,
+  "daily_count": 4122
+}
