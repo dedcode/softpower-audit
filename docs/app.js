@@ -84,7 +84,7 @@ function renderTable(){
   $('outlet-body').innerHTML=list.slice(page*50,(page+1)*50).map(r=>`<tr><td>${esc(r.outlet||'(unresolved domain)')}</td><td><span class="group-pill ${r.group.split(' ')[0]}">${esc(r.group==='Unknown or uncertain'?'Uncertain':r.group)}</span></td><td>${esc(labels(r.country))}<small>Estimate: ${esc(labels(r.estimate))} · domain: ${esc(labels(r.domain_country))}</small></td><td class="numeric">${fmt.format(r.articles)}</td><td class="numeric">${fmt.format(r.active_days)}</td><td class="basis ${r.basis==='conflict'?'conflict':''}">${esc(basis[r.basis]||r.basis)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">No outlets match these filters.</td></tr>';
   $('page-label').textContent=`Page ${page+1} of ${fmt.format(pages)} · 50 entries per page`;$('previous').disabled=page===0;$('next').disabled=page>=pages-1;
 }
-function download(name,rows,cols){const blob=new Blob(['\uFEFF'+Audit.csv(rows,cols)],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function download(name,rows,cols){const blob=new Blob(['\uFEFF'+Audit.csv(rows,cols)],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.style.display='none';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 $('selection').onsubmit=e=>{e.preventDefault();load();};
 $('all-years').onclick=()=>{$('start').value='2015-01-01';$('end').value='2025-12-31';};
 document.querySelectorAll('[data-country]').forEach(b=>b.onclick=()=>{$('country').value=b.dataset.country;load();});
