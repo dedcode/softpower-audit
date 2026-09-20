@@ -12,10 +12,13 @@ The `dedcode.github.io` Pages account uses this existing custom domain.
   within 2015–2025. The catalog includes countries, territories and historical
   or special codes; it is not a list of 267 sovereign countries.
 - Aggregate **daily** counts into days, Monday-based weeks, months or years.
-- Compare observations and distinct active outlets over time.
+- Start with side-by-side local and Chinese website rankings: unique registered
+  domain counts, exact coverage volumes, days with coverage, search, pagination
+  and per-group CSV exports. Bars use separate scales explicitly labeled as such.
+- Inspect exact website counts and volumes over time in an optional table.
 - Set minimum outlets and observations for **both** Chinese and local groups,
   and choose the required proportion of complete periods.
-- Inspect leading outlets, concentration, classification conflicts and gaps.
+- Inspect classification conflicts and source gaps in expandable detail sections.
 - Search/sort the outlet table, export the filtered table or timeline as CSV,
   and copy a URL that reproduces the pair, period, interval and criteria.
 
@@ -58,7 +61,7 @@ selected aggregate results; it never rescans the original GDELT corpus.
 
 Three full-window monthly seed views are saved in `docs/data/` for fast startup.
 Other selections use the API. Filters within the loaded outlet table, research
-criteria, chart measures, and CSV export run locally without additional queries.
+criteria, website ranking pages, and CSV export run locally without additional queries.
 
 The Cloud Run identity has `bigquery.jobUser` on the project and
 `bigquery.dataViewer` on **only the extracted table**. No service-account keys
