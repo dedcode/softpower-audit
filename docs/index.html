@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Explore the balance, diversity and continuity of local and Chinese news coverage across country pairs, 2015–2025.">
+  <title>China news audit · Outlet coverage explorer</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./config.js" defer></script><script src="./audit.js" defer></script><script src="./app.js" defer></script>
+</head>
+<body>
+<header class="masthead"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></span>China news audit</a><div class="header-right"><span class="snapshot">Research snapshot · 2015–2025</span><a href="#methodology">About the data <span aria-hidden="true">↗</span></a></div></header>
+<div class="workspace">
+  <aside class="sidebar">
+    <div class="eyebrow">YOUR STUDY SAMPLE</div>
+    <h2>Choose a pair</h2>
+    <form id="selection">
+      <label for="country">China and</label><select id="country" required><option value="ZA">Zambia</option><option value="CI">Chile</option><option value="RP">Philippines</option></select>
+      <div class="seed-buttons" aria-label="Seed countries"><button type="button" data-country="ZA">Zambia</button><button type="button" data-country="CI">Chile</button><button type="button" data-country="RP">Philippines</button></div>
+      <label for="start">From</label><input type="date" id="start" min="2015-01-01" max="2025-12-31" value="2015-01-01" required>
+      <label for="end">Through</label><input type="date" id="end" min="2015-01-01" max="2025-12-31" value="2025-12-31" required>
+      <button class="text-button" type="button" id="all-years">Use all available years</button>
+      <label for="interval">Group observations by</label><select id="interval"><option value="day">Day</option><option value="week">Week · starts Monday</option><option value="month" selected>Month</option><option value="year">Year</option></select>
+      <p class="field-help">Always calculated from daily counts. Change the interval to test whether coverage is sustained.</p>
+      <button class="primary" id="apply" type="submit">Explore coverage <span aria-hidden="true">→</span></button>
+    </form>
+    <div class="sidebar-note"><span class="tiny-dot"></span><strong>182.7 million daily records</strong><p>All China–country pairs in the saved GDELT snapshot. No article text or audience measurements.</p></div>
+    <a class="repo-link" href="https://github.com/dedcode/softpower-audit" target="_blank" rel="noopener">Project & methodology ↗</a>
+  </aside>
+  <main>
+    <div class="title-row"><div><div class="eyebrow">OUTLET DIVERSITY EXPLORER</div><h1 id="pair-title">China <span>×</span> Zambia</h1><p class="intro">Is there enough local and Chinese coverage to study this pair?</p></div><button id="share" class="secondary">Copy view link</button></div>
+    <div id="status" role="status" aria-live="polite" class="status">Connecting to the research dataset…</div>
+    <div id="result" hidden>
+      <div class="selection-context"><span id="period-label"></span><span class="context-dot">·</span><span id="grouping-label"></span><span class="context-dot">·</span><span id="available-label"></span></div>
+      <div id="gap-banner" class="notice" hidden></div>
+      <section class="cards" id="cards" aria-label="Coverage by outlet origin"></section>
+      <section class="panel chart-panel">
+        <div class="section-top"><div><div class="eyebrow">01 / CONTINUITY</div><h2>Coverage over time</h2><p>Look for sustained coverage on both sides, not just isolated spikes.</p></div><div class="segmented" aria-label="Chart measure"><button class="active" data-metric="articles" aria-pressed="true">News observations</button><button data-metric="active_outlets" aria-pressed="false">Active outlets</button></div></div>
+        <div class="chart-tools"><div class="legend"><span><i class="chinese"></i>Chinese outlets</span><span><i class="local"></i>Local outlets</span><span class="extra-legend" hidden><i class="third"></i>Third country</span><span class="extra-legend" hidden><i class="uncertain"></i>Uncertain</span></div><label class="checkbox"><input type="checkbox" id="extra-groups">Show other groups</label></div>
+        <div id="chart" class="chart" aria-label="Time series of news coverage"><div id="tooltip" role="status"></div></div>
+        <div class="chart-foot"><span><span class="gap-key"></span>Shading marks periods with missing source days.</span><button class="text-button" id="export-timeline">Download this timeline ↓</button></div>
+      </section>
+      <section class="panel assessment-panel">
+        <div class="section-top"><div><div class="eyebrow">02 / YOUR RESEARCH CRITERIA</div><h2>Enough coverage for your study?</h2><p>Set your own minimums. These are screening rules, not a validated quality score.</p></div><span id="assessment-badge" class="badge"></span></div>
+        <div class="criteria"><label>Outlets per group, per period<input type="number" id="min-outlets" min="1" max="1000" value="3"></label><label>Observations per group, per period<input type="number" id="min-articles" min="1" max="1000000" value="20"></label><label>Required periods meeting both<input type="number" id="min-coverage" min="1" max="100" value="80"><span class="input-unit">%</span></label></div>
+        <div class="assessment-body"><div><strong class="assessment-number" id="assessment-value">—</strong><p id="assessment-text"></p><p class="muted" id="assessment-exclusion"></p></div><div id="coverage-strip" class="coverage-strip" aria-label="Periods meeting your criteria"></div></div>
+        <div id="assessment-findings" class="findings"></div>
+      </section>
+      <section class="panel concentration-panel">
+        <div class="section-top"><div><div class="eyebrow">03 / SOURCE DIVERSITY</div><h2>Who supplies the coverage?</h2><p>A high volume of observations can still come from very few outlets.</p></div></div>
+        <div id="concentration" class="concentration-grid"></div>
+      </section>
+      <section class="panel table-panel">
+        <div class="section-top"><div><div class="eyebrow">04 / INSPECT THE SOURCES</div><h2>Publishing outlets</h2><p>Counts cover your entire selected period. Search, compare and review origin clues.</p></div><button class="secondary" id="export-outlets">Export filtered table ↓</button></div>
+        <div class="table-filters"><label class="search-label"><span class="sr-only">Search outlets or countries</span><input type="search" id="search" placeholder="Search outlet or country…"></label><label><span class="sr-only">Outlet group</span><select id="table-group"><option value="">All outlet groups</option><option>Chinese</option><option>Local</option><option>Third country</option><option>Unknown or uncertain</option></select></label><span id="table-total"></span></div>
+        <div class="table-scroll"><table><thead><tr><th><button data-sort="outlet">Outlet ↕</button></th><th><button data-sort="group">Group ↕</button></th><th>Country clues</th><th class="numeric"><button data-sort="articles">Observations ↓</button></th><th class="numeric"><button data-sort="active_days">Days seen ↕</button></th><th>Classification basis</th></tr></thead><tbody id="outlet-body"></tbody></table></div>
+        <div class="pagination"><span id="page-label"></span><div><button class="secondary" id="previous">← Previous</button><button class="secondary" id="next">Next →</button></div></div>
+      </section>
+      <details class="panel methodology" id="methodology"><summary>How to read this audit <span>Definitions, source gaps & limitations</span></summary>
+        <div class="method-grid"><div><h3>What is being counted?</h3><p>One daily record counts distinct article URLs within one outlet and country pair. A URL seen on different days can count on each day. Weekly, monthly and yearly sums are <strong>daily URL observations</strong>, not distinct articles over those longer periods. Active outlets are counted distinctly within each interval.</p><h3>What does “local” mean?</h3><p>Local means the estimated publisher country matches the target. Chinese means the estimate is China. Third country means another known country. This says where the publishing outlet is provisionally assigned, not who wrote a syndicated article or which audience read it.</p></div><div><h3>How are countries assigned?</h3><p>GDELT's 2015–2021 coverage-based estimate is compared with country-domain clues. Disagreements remain uncertain. Agreement is not proof of headquarters or ownership. Domains can be used internationally, and historical outlets may have changed location.</p><h3>What does this audit establish?</h3><p>It helps select pairs and periods with enough usable source coverage. Chinese publishing origin does not establish a soft-power campaign. Local reporting is not a measurement of public opinion. Identifying strategy and audience response needs further evidence.</p></div><div><h3>How do stories enter a pair?</h3><p>Chinese-classified outlets contribute target countries mentioned in GDELT's extracted locations. Other known outlets contribute their own country when China is mentioned, plus countries mentioned alongside China. Uncertain outlets require both China and the target. The same story can contribute to multiple pairs.</p><h3>Missing dates and incomplete periods</h3><p>Missing source days are marked, never silently treated as zero coverage. The research-criteria check excludes periods containing missing source days. Periods at the edges are evaluated only over the selected dates. Days use GDELT's UTC observation date, not a verified publication date.</p></div></div>
+        <p class="method-sources">Sources: <a href="https://blog.gdeltproject.org/mapping-the-media-a-geographic-lookup-of-gdelts-sources-2015-2021/amp/" target="_blank" rel="noopener">GDELT outlet estimates</a> · <a href="https://www.iana.org/domains/root/db" target="_blank" rel="noopener">IANA country domains</a> · <a href="./data/provenance.json">Snapshot provenance</a></p>
+      </details>
+      <footer>China news audit <span>Daily data · 2015–2025 · Research snapshot, 19 September 2026</span></footer>
+    </div>
+  </main>
+</div>
+</body></html>
