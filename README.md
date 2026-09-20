@@ -3,7 +3,8 @@
 A public research dashboard for inspecting the balance, diversity and continuity
 of local and Chinese news outlet coverage for a China–country pair.
 
-The interface is published at **https://dedcode.github.io/softpower-audit/**.
+The interface is published at **https://djelleldifallah.com/softpower-audit/**.
+The `dedcode.github.io` Pages account uses this existing custom domain.
 
 ## What it does
 
@@ -62,7 +63,8 @@ criteria, chart measures, and CSV export run locally without additional queries.
 The Cloud Run identity has `bigquery.jobUser` on the project and
 `bigquery.dataViewer` on **only the extracted table**. No service-account keys
 or user credentials are embedded in the site. The API is deliberately public;
-its CORS policy allows `https://dedcode.github.io`. CORS is not authentication.
+its CORS policy allows the GitHub Pages origin and the existing custom domain
+(`https://djelleldifallah.com` and its `www` variant). CORS is not authentication.
 
 Cost controls: one maximum Cloud Run instance, zero minimum instances, one
 concurrent uncached query, 30 uncached queries per hour per running process,

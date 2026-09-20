@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory(prefix='softpower-deploy-') as tmp:
         '--build-service-account=projects/citygraph/serviceAccounts/softpower-audit-builder@citygraph.iam.gserviceaccount.com',
         '--allow-unauthenticated', '--max=1', '--max-instances=1', '--min=0', '--min-instances=0',
         '--concurrency=8', '--cpu=1', '--memory=512Mi', '--timeout=180',
-        '--set-env-vars=GOOGLE_CLOUD_PROJECT=citygraph,ALLOWED_ORIGINS=https://dedcode.github.io',
+        '--set-env-vars=^|^GOOGLE_CLOUD_PROJECT=citygraph|ALLOWED_ORIGINS=https://dedcode.github.io,https://djelleldifallah.com,https://www.djelleldifallah.com',
         '--quiet', '--format=json']
     # gcloud may print deployment status but is never asked to print credentials.
     result = subprocess.run(command, text=True, stdout=subprocess.PIPE)
