@@ -12,5 +12,5 @@ def status(country:str=Query('KE',pattern='^[A-Z]{2}$')):
   except NotFound:return {'country':country,'state':'not_started','updated_at':None}
   except Exception:
    logging.exception('Progress snapshot unavailable');raise HTTPException(503,'Progress is temporarily unavailable; this does not mean the crawler stopped.')
-  result={k:v for k,v in result.items() if k in ('country','run_id','phase','state','updated_at','total','processed','pending','downloading','counts','error')}
+  result={k:v for k,v in result.items() if k in ('country','run_id','phase','state','updated_at','total','processed','pending','downloading','counts','domains','active_stages','error')}
   cache[country]=(time.monotonic(),result);return result
