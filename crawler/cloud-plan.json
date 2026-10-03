@@ -1,0 +1,17 @@
+{
+  "bucket": "citygraph-softpower-crawl",
+  "bucket_location": "US",
+  "dataset": "citygraph.softpower_crawl",
+  "service_account": "softpower-crawler@citygraph.iam.gserviceaccount.com",
+  "worker_permissions": {
+    "project": "roles/bigquery.jobUser",
+    "new_bucket": "roles/storage.objectAdmin",
+    "new_dataset": "WRITER"
+  },
+  "existing_api_permission": {
+    "identity": "softpower-audit-reader@citygraph.iam.gserviceaccount.com",
+    "role": "roles/storage.objectViewer",
+    "scope": "progress/ objects only in the new bucket"
+  },
+  "public_access": "No public bucket access; only derived progress is served through the existing API"
+}

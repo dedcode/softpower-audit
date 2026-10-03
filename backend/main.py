@@ -159,3 +159,6 @@ def audit(country: str = Query(..., pattern='^[A-Z]{2}$'), start: date = date(20
 
 from articles import router as article_router
 app.include_router(article_router)
+
+from extraction import router as extraction_router
+app.include_router(extraction_router)
