@@ -125,6 +125,15 @@ the selected website and geographic/review filters. Clear restores the full date
 The available range is January 2025, using GDELT observation dates rather than
 verified publication dates. URLs observed more than once count once per selected
 period, while daily histogram bars count each day's distinct URLs.
-Unreviewed article labels are derived from URL paths, as explained in the methodology.
+Unreviewed article labels are derived from URL paths, rather than verified headlines.
 The page is static; browsing causes no BigQuery queries. Rebuild the subset
 from the pilot with `python3 scripts/build_kenya_view.py`.
+
+The Kenya website-country filter uses the saved `estimated_country` (GDELT)
+and `domain_country` (ccTLD) fields. GDELT requires Kenya in the first field;
+ccTLD requires Kenya in the second; GDELT + ccTLD requires both. These are
+inclusive evidence filters, not mutually exclusive classification categories.
+In this pilot they yield 429 URLs / 17 websites, 334 / 7, and 334 / 7 respectively.
+The result summary counts URLs and unique websites after every active filter,
+including a selected website. CSV exports include the chosen country-source
+filter and both saved country fields.
