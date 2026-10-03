@@ -72,13 +72,13 @@ def extract(body,url):
   truncated=bool(re.search(r'(?:\.\.\.|…|read more|continue reading)\s*$',text,re.I))
   empty_body_marker=any(m.startswith(('article selector','microdata')) for m,_,_ in candidates) and not any(len(t)>=100 for m,t,_ in candidates if m.startswith(('article selector','microdata')))
   if 'parser' in method and empty_body_marker:anchored=False
-  quality='candidate' if len(text)>=400 and anchored and not paywall and not truncated else 'partial' if len(text)>=100 and (anchored or schemas) else 'missing'
+  quality='candidate' if len(text)>=400 and anchored and not paywall and not truncated else 'partial' if len(text)>=100 and (anchored or schemas or paywall) else 'missing'
   reason='Article body passes structural checks; not human-verified' if quality=='candidate' else 'Subscription preview' if paywall else 'Truncated or insufficient article body'
   result['candidates'].append({'method':method,'characters':len(text),'quality':quality})
   score=({'candidate':3,'partial':2,'missing':0}[quality],(3 if method.startswith('structured') else 2 if anchored and 'parser' not in method else 1),len(text))
   if score>result.get('_score',(-1,0,0)):result.update(text=text if quality!='missing' else '',quality=quality,method=method,reason=reason,_score=score)
  result.pop('_score',None);result['paywall']=paywall
  # News listings can have many Article cards; no matching headline/body means no success.
- if len(tree.xpath('//article'))>8 and not any(c['quality']=='candidate' and c['method'].startswith(('article selector','microdata','structured')) for c in result['candidates']):
+ if not schemas and not paywall and len(tree.xpath('//article'))>8 and not any(c['quality']=='candidate' and c['method'].startswith(('article selector','microdata','structured')) for c in result['candidates']):
   result.update(quality='missing',text='',reason='Listing page, not a single article')
  return result

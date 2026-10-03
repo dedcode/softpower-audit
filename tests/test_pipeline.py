@@ -44,4 +44,8 @@ class PipelineTests(unittest.TestCase):
   body=b'<meta property="og:type" content="article"><section class="body-copy"></section><p>Unrelated headlines</p>'
   with patch('extract.trafilatura.extract',return_value='Unrelated headlines. '*60):
    self.assertNotEqual(extract(body,'https://example.org/x')['quality'],'candidate')
+ def test_paywall_preview_survives_related_story_cards(self):
+  body=('<p>Get Full Access for Ksh299/Week.</p>'+('<article>Related story</article>'*10)).encode()
+  with patch('extract.trafilatura.extract',return_value='This is the article introduction. '*8):
+   a=extract(body,'https://example.org/x');self.assertEqual(a['quality'],'partial');self.assertTrue(a['text'])
 if __name__=='__main__':unittest.main()
