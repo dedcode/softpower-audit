@@ -1,6 +1,6 @@
 # Article collection pipeline
 
-Status: implemented and tested offline; cloud provisioning and deployment await approval. No cloud crawl has started.
+Status: deployed on 2026-10-03 after approval. The Kenya pilot completed; the full collection has not been launched. Public progress: https://djelleldifallah.com/softpower-audit/extraction-status/?country=KE .
 
 The worker accepts a country code, date range, source table and resource limits. Kenya is the first input, not a special case in the crawler. Source selection uses GDELT's estimated publisher country. It does not select articles merely because Kenya appears in their text.
 
@@ -47,7 +47,7 @@ Create service account `softpower-crawler@citygraph.iam.gserviceaccount.com`:
 
 Existing API account `softpower-audit-reader@citygraph.iam.gserviceaccount.com`: `roles/storage.objectViewer`, condition restricted to the new bucket's `progress/` objects. The public API cannot read stored originals under this grant. No public bucket access.
 
-Create Cloud Run Job `softpower-crawler` in `us-central1`, with one task, no automatic retries, 1 CPU, 1 GiB RAM. Build the container and update the existing API to serve progress. Publish the status page through the existing GitHub Pages repository. Deployment/build permissions and the cloud integration still need validation after approval; the scripts do not grant new build permissions automatically.
+Create Cloud Run Job `softpower-crawler` in `us-central1`, with one task, no automatic retries, 1 CPU, 1 GiB RAM. Build the container and update the existing API to serve progress. Publish the status page through the existing GitHub Pages repository. Deployment and the pilot used the existing build account successfully; the scripts do not grant new build permissions automatically.
 
 ## Commands after approval
 
@@ -59,7 +59,7 @@ python scripts/prepare_crawl_run.py --country KE --pilot --apply
 python scripts/deploy_crawler.py --run-id RUN_ID --deploy --execute
 ```
 
-Without `--apply`, provisioning/preparation print plans only. Without `--deploy` or `--execute`, deployment makes no changes. Review pilot outcomes before preparing a full run without `--pilot`. Publish the new API route and status assets as part of deployment; those changes have not been published yet.
+Without `--apply`, provisioning/preparation print plans only. Without `--deploy` or `--execute`, deployment makes no changes. Review pilot outcomes before preparing a full run without `--pilot`. The API route and status assets are published.
 
 ## Website progress
 
@@ -75,4 +75,12 @@ python -m compileall -q crawler backend/extraction.py scripts
 node --check docs/extraction-status/status.js
 ```
 
-The retrieval tests mock HTTP and storage. Cloud IAM, image build, real publisher behavior and end-to-end progress publication have not been tested yet.
+The eight retrieval tests mock HTTP and storage. Cloud IAM, image build, real publisher requests and end-to-end progress publication were subsequently verified in the pilot.
+
+## First pilot result
+
+Run `ke-pilot-20261003-160721`, execution `softpower-crawler-gjcrn`: 24 selected URLs, 21 processed, 3 pending on paused domains. Outcomes: 7 saved, 3 HTTP 404/410, 1 blocked, 4 needing inspection, 3 robots-policy retrieval failures, 3 temporary network errors. There were 27 attempts including 6 retries. The worker ran for approximately 85 seconds; its nominal compute estimate was $0.0017, excluding other services and startup overhead.
+
+All 21 outcomes and the final state were verified in BigQuery. All 7 saved rows reference both original bodies and extracted text. A downloaded original was decompressed and its SHA-256 matched the stored hash. Successful text extraction alone does not establish article relevance or accuracy.
+
+The sample deliberately uses date extremes from the largest outlets; do not extrapolate its recovery rate to the full corpus. Full collection remains unstarted, with no scheduled continuation.
