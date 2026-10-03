@@ -1,7 +1,7 @@
 # softpower-audit
 
 The public interface at https://djelleldifallah.com/softpower-audit/ is a single
-article browser. Select the publishing country in the header, set observation
+article browser. The publishing country is currently locked to Kenya in the header. Set observation
 dates in the left panel, select a website, and open article links. `/kenya/` and
 `/pilot/` redirect to this interface, preserving query parameters.
 
@@ -53,7 +53,7 @@ Rebuild with `scripts/build_kenya_cache.py` and verify with
 `node tests/test_kenya_cache.js`. The snapshot includes 2015–2025 inclusive
 (11 calendar years); it is not a live news feed.
 
-Other countries continue to use the API. Overview queries return website rankings and the monthly histogram. Story
+The current frontend only uses the Kenya cache, including links with another country code (normalized to KE). The API remains available separately for other countries. Overview queries return website rankings and the monthly histogram. Story
 queries return 20 distinct URLs per page; pagination does not truncate the
 corpus. Full location strings are fetched only when a story's details are
 opened. The result summary displays the URL and website counts once; choose All sources
