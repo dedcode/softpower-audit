@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "table": "citygraph.softpower.china_articles",
+  "start": "2015-01-01",
+  "end": "2025-12-31",
+  "rows": 86383,
+  "gdelt_kenya_rows": 86226,
+  "gdelt_kenya_unique_urls": 85993,
+  "json": "articles-28c680b3d7c3.json",
+  "gzip": "articles-28c680b3d7c3.json.gz",
+  "sha256": "28c680b3d7c34b934a67f8efe2ccc1c659c5c01fde1451986901d89a4f9b0c30",
+  "json_bytes": 18175817,
+  "gzip_bytes": 3559877,
+  "job_id": "1212bad6-36f9-483f-afd5-c54dff6d835b",
+  "bytes_billed": 94748278784
+}

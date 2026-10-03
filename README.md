@@ -40,7 +40,20 @@ parameterized, read-only `/browse`, `/stories`, `/article-places`, and
 `/article-catalog` routes on the existing Cloud Run service. The older aggregate
 API remains available for compatibility but has no separate website interface.
 
-Overview queries return website rankings and the monthly histogram. Story
+For Kenya, `docs/data/kenya/` holds a complete versioned static cache: 86,383
+daily candidate records (GDELT Kenya or ccTLD Kenya), including 85,993 unique
+URLs under the GDELT Kenya filter. The download is 3.56 MB compressed, with an
+18.18 MB JSON fallback for browsers without streaming gzip decompression.
+`kenya-cache.js` filters and paginates in memory, preserves per-day geographic
+evidence, and deduplicates URLs only after filtering. Place names are included.
+Cache Storage retains the versioned payload when available; memory and normal
+HTTP caching remain available if persistent storage is disabled. Kenya browsing
+never calls the query API, including pagination and expanded place details.
+Rebuild with `scripts/build_kenya_cache.py` and verify with
+`node tests/test_kenya_cache.js`. The snapshot includes 2015–2025 inclusive
+(11 calendar years); it is not a live news feed.
+
+Other countries continue to use the API. Overview queries return website rankings and the monthly histogram. Story
 queries return 20 distinct URLs per page; pagination does not truncate the
 corpus. Full location strings are fetched only when a story's details are
 opened. The result summary displays the URL and website counts once; choose All sources
