@@ -118,13 +118,13 @@ including stories with a China mention and no Kenyan geographic mention.
 Select a website, apply optional geographic filters, inspect the 12 existing local article reviews, and export the selection.
 The left sidebar places the observation-date selector above the website list.
 The histogram has two draggable, keyboard-accessible range
-handles, exact date inputs, and first/last-week shortcuts. Date selection updates
+handles and expandable exact date inputs. Date selection updates
 website counts, article links, and CSV export together; shared URLs preserve the
 selected dates. The histogram keeps the whole available month visible and follows
 the selected website and geographic/review filters. Clear restores the full date range.
 The available range is January 2025, using GDELT observation dates rather than
 verified publication dates. URLs observed more than once count once per selected
 period, while daily histogram bars count each day's distinct URLs.
-Unreviewed article labels are derived from URL paths and marked accordingly.
+Unreviewed article labels are derived from URL paths, as explained in the methodology.
 The page is static; browsing causes no BigQuery queries. Rebuild the subset
 from the pilot with `python3 scripts/build_kenya_view.py`.
