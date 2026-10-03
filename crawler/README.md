@@ -110,3 +110,27 @@ The pilot exposed and corrected outdated article-body selectors, an invalid empt
 `RetryingPipeline` now retries an incomplete toolbox pass automatically, with a 30-second delay and a maximum of two passes. Intermediate `deferred` outcomes are internal only: they never enter the worker's completed results. Retry state and attempt history are persisted. When the limit is exhausted, the URL becomes `failed` with the reason retained. Resuming an older run requeues its deferred URLs while retaining terminal results.
 
 The existing pilot was resumed for its one outstanding URL. Execution `softpower-crawler-l94b5` actually performed both recovery passes, then recorded failure. BigQuery verification found 24 terminal records and no deferred/retrying records: 16 full-text candidates, 5 partial, 2 exhausted and 1 retry-exhausted failure. The dashboard combines the latter two statuses as 3 failures. It now displays only three outcome counters and one article table, with technical history under Details. Its completion count excludes pending/retrying URLs.
+
+### Full Kenya collection launched 2026-10-03
+
+Run `ke-full-20261003-192939`, execution `softpower-crawler-wjfrb`, image
+`full-websites-20261003` uses all 85,993 distinct Kenya-source URLs from
+2015-01-01 through 2025-12-31. Six workers operate across outlets; each outlet
+has serial requests with a minimum three-second spacing. The execution pauses
+at 23 hours, 40 GiB of recorded responses, or 150,000 recorded HTTP attempts.
+These are operational limits, not a guaranteed billing cap. A paused run must
+be resumed with the same run ID; terminal checkpoint results are retained.
+
+The status page now has expandable per-website summaries. Public snapshots no
+longer contain URL lists or individual attempt histories. Originals, extracted
+text, checkpoints and stage histories remain private in Cloud Storage; result
+references and source-table/URL links remain in BigQuery `crawl_results`.
+
+Resume after inspecting the recorded stop reason:
+
+```sh
+python scripts/deploy_crawler.py --run-id ke-full-20261003-192939 --execute
+```
+
+Do not execute another worker while one is active. An operator can stop new
+scheduling by creating `runs/ke-full-20261003-192939/STOP` in the crawl bucket.
