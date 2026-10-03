@@ -24,9 +24,9 @@ class PipelineTests(unittest.TestCase):
  def test_failure_traverses_archive_before_terminal(self):
   f=Pipeline(Bucket(),'run',max_attempts=1)
   got={'status':'unavailable','attempts':[],'http_status':404,'raw_uri':None}
-  with patch.object(Fetcher,'fetch',return_value=got),patch.object(f,'one',return_value=(200,{},b'{"archived_snapshots":{}}',False)):
+  with patch.object(Fetcher,'fetch',return_value=got),patch.object(f,'one',return_value=(200,{},b'{"archived_snapshots":{}}',False)) as lookup:
    r=f.fetch({'url':'https://example.org/x','outlet':'example.org'},'run','KE')
-  self.assertEqual(r['status'],'exhausted');self.assertEqual(sum(e['stage']=='archive_lookup' for e in r['attempts']),2)
+  self.assertNotIn('timestamp=',lookup.call_args_list[-1].args[0]);self.assertEqual(r['status'],'exhausted');self.assertEqual(sum(e['stage']=='archive_lookup' for e in r['attempts']),2)
  def test_archive_outage_is_deferred(self):
   f=Pipeline(Bucket(),'run',max_attempts=1)
   got={'status':'unavailable','attempts':[],'http_status':404,'raw_uri':None}
@@ -40,4 +40,8 @@ class PipelineTests(unittest.TestCase):
   with patch.object(Fetcher,'fetch',return_value=got),patch.object(f,'read',return_value=body),patch.object(f,'render',return_value=(body,'https://example.org/x')) as render,patch.object(f,'one',return_value=(200,{},b'{"archived_snapshots":{}}',False)):
    r=f.fetch({'url':'https://example.org/x','outlet':'example.org'},'run','KE')
   render.assert_called_once();self.assertEqual(r['status'],'partial');self.assertEqual(sum(e['stage']=='archive_lookup' for e in r['attempts']),2)
+ def test_empty_article_marker_cannot_be_replaced_by_navigation(self):
+  body=b'<meta property="og:type" content="article"><section class="body-copy"></section><p>Unrelated headlines</p>'
+  with patch('extract.trafilatura.extract',return_value='Unrelated headlines. '*60):
+   self.assertNotEqual(extract(body,'https://example.org/x')['quality'],'candidate')
 if __name__=='__main__':unittest.main()

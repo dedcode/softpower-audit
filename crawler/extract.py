@@ -4,7 +4,7 @@ from urllib.parse import urlsplit,urljoin
 from lxml import html
 import trafilatura
 VERSION='toolbox-2'
-CLASSES=('post-content','post__content','banner-text','story-content','tbl_art','article-body','entry-content')
+CLASSES=('post-content','post__content','banner-text','story-content','tbl_art','article-body','entry-content','body-copy','article-content__content')
 PROMO=('get full access for','subscribe now','unlimited access to all premium','ad-free browsing','mobile-optimised reading','weekly newsletters','search option is now available','for subscriptions on news from china daily','for more visit china daily','stand with the standard','the standard group plc')
 def walk(value):
  if isinstance(value,dict):
@@ -56,6 +56,8 @@ def extract(body,url):
    # banner-text is a known single-article body on Kenya Star, not a generic marker.
    if cls=='banner-text' and 'kenyastar.com' not in url:continue
    candidates.append(('article selector: '+cls,clean(node),True))
+ articles=tree.xpath('//article')
+ if len(articles)==1:candidates.append(('single article element',clean(articles[0]),True))
  for node in tree.xpath('//*[@itemprop="articleBody"]')[:2]:candidates.append(('microdata articleBody',clean(node),True))
  # Older table-based sites can have a single substantial article cell.
  cells=[normalized(e.text_content()) for e in tree.xpath('//td[not(.//td)]')]
@@ -64,10 +66,12 @@ def extract(body,url):
   if not any(x in text.lower() for x in PROMO):candidates.append(('table article cell',text,True))
  for precise in (True,False):
   text=trafilatura.extract(body,url=url,include_comments=False,include_tables=False,favor_precision=precise) or ''
-  candidates.append(('precision parser' if precise else 'fallback parser',text,bool(schemas)))
+  candidates.append(('precision parser' if precise else 'fallback parser',text,bool(schemas) or 'article' in tree.xpath('//meta[@property="og:type"]/@content')))
  for method,text,anchored in candidates:
   text='\n\n'.join(line for line in text.splitlines() if line.strip() and not any(x in line.lower() for x in PROMO))
   truncated=bool(re.search(r'(?:\.\.\.|…|read more|continue reading)\s*$',text,re.I))
+  empty_body_marker=any(m.startswith(('article selector','microdata')) for m,_,_ in candidates) and not any(len(t)>=100 for m,t,_ in candidates if m.startswith(('article selector','microdata')))
+  if 'parser' in method and empty_body_marker:anchored=False
   quality='candidate' if len(text)>=400 and anchored and not paywall and not truncated else 'partial' if len(text)>=100 and (anchored or schemas) else 'missing'
   reason='Article body passes structural checks; not human-verified' if quality=='candidate' else 'Subscription preview' if paywall else 'Truncated or insufficient article body'
   result['candidates'].append({'method':method,'characters':len(text),'quality':quality})

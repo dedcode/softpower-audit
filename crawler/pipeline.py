@@ -66,7 +66,7 @@ class Pipeline(Fetcher):
      if time.monotonic()-began>300:
       unresolved=True;stage('archive','deferred',reason='Per-URL time budget');break
      active('archive lookup')
-     api='https://archive.org/wayback/available?'+urlencode({'url':item['url'],'timestamp':stamp})
+     api='https://archive.org/wayback/available?'+urlencode({'url':item['url'],**({'timestamp':stamp} if stamp else {})})
      payload=None
      for attempt in range(2):
       try:
@@ -82,7 +82,13 @@ class Pipeline(Fetcher):
      url=match.get('url','').replace('http://web.archive.org/','https://web.archive.org/')
      if urlsplit(url).hostname!='web.archive.org':unresolved=True;stage('archive','deferred',reason='Unexpected archive host');continue
      if url in seen:stage('archive','duplicate_snapshot');continue
-     seen.add(url);got,_=retrieve(url,'archive');events[-1]['snapshot_timestamp']=match.get('timestamp')
+     seen.add(url);got,arch_analysis=retrieve(url,'archive');events[-1]['snapshot_timestamp']=match.get('timestamp')
+     if not best or best['quality']!='candidate':
+      for alternate in list(dict.fromkeys((arch_analysis or {}).get('discovered',[])))[:2]:
+       if alternate in seen or urlsplit(alternate).hostname!='web.archive.org':continue
+       if time.monotonic()-began>300:unresolved=True;stage('archive_canonical','deferred',reason='Per-URL time budget');break
+       seen.add(alternate);alt,_=retrieve(alternate,'archive_canonical');unresolved|=alt['status'] in ('temporary_error','rate_limited','robots_unavailable')
+       if best and best['quality']=='candidate':break
      unresolved|=got['status'] in ('temporary_error','rate_limited','robots_unavailable')
      if best and best['quality']=='candidate':break
    else:stage('archive','not_needed',reason='Usable candidate already found')
