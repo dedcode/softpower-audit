@@ -115,17 +115,18 @@ stories, false positives, excluded relevant coverage and observation-date issues
 `docs/kenya/` is a dedicated local-source browser for the January 2025 pilot.
 It includes all 429 URLs from the 17 websites provisionally assigned Kenya,
 including stories with a China mention and no Kenyan geographic mention.
-Select a website, apply optional geographic filters, inspect the 12 existing local article reviews, and export the selection.
+Select a website, apply optional geographic filters, and export the selection.
+The Kenya page does not load or display AI review annotations.
 The left sidebar places the observation-date selector above the website list.
 The histogram has two draggable, keyboard-accessible range
 handles and expandable exact date inputs. Date selection updates
 website counts, article links, and CSV export together; shared URLs preserve the
 selected dates. The histogram keeps the whole available month visible and follows
-the selected website and geographic/review filters. Clear restores the full date range.
+the selected website and geographic filters. Clear restores the full date range.
 The available range is January 2025, using GDELT observation dates rather than
 verified publication dates. URLs observed more than once count once per selected
 period, while daily histogram bars count each day's distinct URLs.
-Unreviewed article labels are derived from URL paths, rather than verified headlines.
+Article labels are derived from URL paths, rather than verified headlines.
 The page is static; browsing causes no BigQuery queries. Rebuild the subset
 from the pilot with `python3 scripts/build_kenya_view.py`.
 
