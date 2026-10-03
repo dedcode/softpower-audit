@@ -109,3 +109,14 @@ preview). This static page incurs no live BigQuery queries when browsed. The
 main historical dashboard remains on its original broad counting definition.
 The pilot does not establish filter accuracy; it demonstrates retained relevant
 stories, false positives, excluded relevant coverage and observation-date issues.
+
+## Kenyan sources on China
+
+`docs/kenya/` is a dedicated local-source browser for the January 2025 pilot.
+It includes all 429 URLs from the 17 websites provisionally assigned Kenya,
+including stories with a China mention and no Kenyan geographic mention.
+Select a website, search metadata and review notes, apply optional geographic
+filters, inspect the 12 existing local article reviews, and export the selection.
+Unreviewed article labels are derived from URL paths and marked accordingly.
+The page is static; browsing causes no BigQuery queries. Rebuild the subset
+from the pilot with `python3 scripts/build_kenya_view.py`.
