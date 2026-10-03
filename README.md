@@ -43,7 +43,8 @@ API remains available for compatibility but has no separate website interface.
 Overview queries return website rankings and the monthly histogram. Story
 queries return 20 distinct URLs per page; pagination does not truncate the
 corpus. Full location strings are fetched only when a story's details are
-opened. CSV export is explicitly the currently displayed page.
+opened. The result summary displays the URL and website counts once; choose All sources
+in the website list to clear a website selection.
 
 The service identity has table-scoped BigQuery read access to the article table
 and the earlier daily aggregate table. Credentials never reach the browser.
