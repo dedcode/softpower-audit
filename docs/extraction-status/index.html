@@ -1,8 +1,7 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Article collection · softpower-audit</title><link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="status.css"><script src="../config.js" defer></script><script src="status.js" defer></script></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Article collection · softpower-audit</title><link rel="stylesheet" href="../style.css"><link rel="stylesheet" href="status.css"><script src="../config.js" defer></script><script src="status.js?v=retry-final" defer></script></head><body>
 <header class="masthead"><a class="brand" href="../?country=KE">softpower-audit</a><a href="../?country=KE">Browse articles</a></header><main>
-<div class="eyebrow">ARTICLE COLLECTION</div><h1 id="title">Extraction status</h1><p id="run">Checking the cloud worker…</p><p id="notice" role="status"></p>
+<h1 id="title">Article collection</h1><p id="run">Loading…</p><p id="notice" role="status"></p>
 <div id="details" hidden><div class="state-line"><strong id="state"></strong><span id="updated"></span></div><progress id="progress" max="100" value="0"></progress><p id="completion"></p>
-<div class="cards" id="cards"></div><p id="storage"></p><p id="limits"></p><p class="muted">Full-text candidates pass automated structural checks. Partial or no-text outcomes require exhaustion of applicable toolbox stages; temporary errors and limits remain deferred. Figures describe this run.</p>
-<p><a href="recovery-pilot.html">Earlier manual recovery review (historical)</a> — separate from the original download counts.</p><h2>By website</h2><div class="table-scroll"><table><thead><tr><th>Website</th><th>Saved</th><th>Blocked / limited</th><th>Unavailable</th><th>Needs inspection</th><th>Other outcomes</th><th>Pending</th><th>Domain status</th></tr></thead><tbody id="domains"></tbody></table></div>
-<details><summary>Run and storage references</summary><pre id="references"></pre></details></div>
-<p class="muted">Updates every 15 seconds while this tab is visible. Progress reads a saved snapshot and does not query BigQuery.</p></main></body></html>
+<div class="cards" id="cards"></div><p class="muted">*Passed automated article-text checks; completeness is not guaranteed. Temporary errors are retried automatically. If retries are exhausted, the result is failed.</p>
+<div class="table-scroll"><table><thead><tr><th>Website</th><th>Article</th><th>Result</th></tr></thead><tbody id="articles"></tbody></table></div></div>
+</main></body></html>

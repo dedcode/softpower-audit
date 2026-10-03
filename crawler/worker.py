@@ -6,7 +6,7 @@ from datetime import datetime,timezone,timedelta
 from google.cloud import storage,bigquery
 from google.api_core.exceptions import NotFound
 from crawl import key,now
-from pipeline import Pipeline
+from retrying import RetryingPipeline
 
 STOP=False
 def halt(*_):
@@ -24,7 +24,7 @@ class Run:
         self.lease=self.bucket.blob('control/worker-lease.json');self.owner=uuid.uuid4().hex
         self.done={};self.checkpoint=[];self.to_bq=[];self.paused={};self.active={};self.queues=defaultdict(deque)
         self.last_checkpoint=time.monotonic();self.last_bq=time.monotonic()
-        self.bq=bigquery.Client(project=self.config['project']);self.fetcher=Pipeline(self.bucket,self.run_id,self.config['delay_seconds'],self.config['max_attempts'])
+        self.bq=bigquery.Client(project=self.config['project']);self.fetcher=RetryingPipeline(self.bucket,self.run_id,self.config['delay_seconds'],self.config['max_attempts'])
     def put(self,path,value):self.bucket.blob(path).upload_from_string(json.dumps(value,separators=(',',':')),content_type='application/json',timeout=60)
     def lease_update(self,initial=False):
         payload=json.dumps({'owner':self.owner,'run_id':self.run_id,'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat()})
@@ -71,6 +71,7 @@ class Run:
                     r=json.loads(line)
                     previous=self.done.get(r['article_id'])
                     if previous is None or r['updated_at']>previous['updated_at']:self.done[r['article_id']]=r
+            self.done={k:r for k,r in self.done.items() if r['status'] not in ('deferred','retrying')}
             self.to_bq=list(self.done.values())
             inputs=json.loads(gzip.decompress(self.bucket.blob(self.prefix+'inputs.json.gz').download_as_bytes()));total=len(inputs)
             for r in inputs:
