@@ -117,6 +117,14 @@ It includes all 429 URLs from the 17 websites provisionally assigned Kenya,
 including stories with a China mention and no Kenyan geographic mention.
 Select a website, search metadata and review notes, apply optional geographic
 filters, inspect the 12 existing local article reviews, and export the selection.
+The observation-date histogram has two draggable, keyboard-accessible range
+handles, exact date inputs, and first/last-week shortcuts. Date selection updates
+website counts, article links, and CSV export together; shared URLs preserve the
+selected dates. The histogram keeps the whole available month visible and follows
+the selected website and metadata filters. Clear restores the full date range.
+The available range is January 2025, using GDELT observation dates rather than
+verified publication dates. URLs observed more than once count once per selected
+period, while daily histogram bars count each day's distinct URLs.
 Unreviewed article labels are derived from URL paths and marked accordingly.
 The page is static; browsing causes no BigQuery queries. Rebuild the subset
 from the pilot with `python3 scripts/build_kenya_view.py`.
