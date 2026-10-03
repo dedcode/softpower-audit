@@ -1,4 +1,4 @@
-# China news audit
+# softpower-audit
 
 A public research dashboard for inspecting the balance, diversity and continuity
 of local and Chinese news outlet coverage for a China–country pair.
