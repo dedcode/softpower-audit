@@ -1,69 +1,20 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Explore the balance, diversity and continuity of local and Chinese news coverage across country pairs, 2015–2025.">
-  <title>softpower-audit · Outlet coverage explorer</title>
-  <link rel="stylesheet" href="./style.css">
-  <script src="./config.js" defer></script><script src="./audit.js" defer></script><script src="./app.js" defer></script>
-</head>
-<body>
-<header class="masthead"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></span>softpower-audit</a><div class="header-right"><span class="snapshot">Research snapshot · 2015–2025</span><a href="./kenya/">Kenyan sources on China</a><a href="#methodology">About the data <span aria-hidden="true">↗</span></a></div></header>
-<div class="workspace">
-  <aside class="sidebar">
-    <div class="eyebrow">YOUR STUDY SAMPLE</div>
-    <h2>Choose a pair</h2>
-    <form id="selection">
-      <label for="country">China and</label><select id="country" required><option value="ZA">Zambia</option><option value="CI">Chile</option><option value="RP">Philippines</option></select>
-      <div class="seed-buttons" aria-label="Seed countries"><button type="button" data-country="ZA">Zambia</button><button type="button" data-country="CI">Chile</button><button type="button" data-country="RP">Philippines</button></div>
-      <label for="start">From</label><input type="date" id="start" min="2015-01-01" max="2025-12-31" value="2015-01-01" required>
-      <label for="end">Through</label><input type="date" id="end" min="2015-01-01" max="2025-12-31" value="2025-12-31" required>
-      <button class="text-button" type="button" id="all-years">Use all available years</button>
-      <label for="interval">Time breakdown</label><select id="interval"><option value="day">Day</option><option value="week">Week · starts Monday</option><option value="month" selected>Month</option><option value="year">Year</option></select>
-      <p class="field-help">Used in the optional time breakdown below. Website totals always cover the entire selected date range.</p>
-      <button class="primary" id="apply" type="submit">Explore coverage <span aria-hidden="true">→</span></button>
-    </form>
-    <div class="sidebar-note"><span class="tiny-dot"></span><strong>182.7 million daily records</strong><p>All China–country pairs in the saved GDELT snapshot. No article text or audience measurements.</p></div>
-    <a class="repo-link" href="https://github.com/dedcode/softpower-audit" target="_blank" rel="noopener">Project & methodology ↗</a>
-  </aside>
-  <main>
-    <div class="title-row"><div><div class="eyebrow">OUTLET DIVERSITY EXPLORER</div><h1 id="pair-title">China <span>×</span> Zambia</h1><p class="intro">Which websites cover this pair, and how much does each contribute?</p></div><button id="share" class="secondary">Copy view link</button></div>
-    <div id="status" role="status" aria-live="polite" class="status">Connecting to the research dataset…</div>
-    <div id="result" hidden>
-      <div class="selection-context"><span id="period-label"></span><span class="context-dot">·</span><span id="grouping-label"></span><span class="context-dot">·</span><span id="available-label"></span></div>
-      <div id="gap-banner" class="notice" hidden></div>
-      <section class="outlet-focus" aria-labelledby="websites-title">
-        <div class="section-top"><div><div class="eyebrow">WEBSITES & COVERAGE</div><h2 id="websites-title">Local and Chinese websites</h2><p>Each website appears once, ranked by coverage volume over your selected dates.</p></div></div>
-        <p class="count-note"><strong>Coverage volume</strong> counts article URLs seen each day, added across the selected dates. A URL seen on multiple days can count more than once.</p>
-        <p class="count-note">These are geographic candidates, not verified pair-related stories. <a href="./pilot/">Compare stricter filters in the January China–Kenya pilot →</a></p>
-        <div id="pair-balance" class="balance-note"></div>
-        <div class="website-search"><label for="website-search">Find a website in either list</label><input type="search" id="website-search" placeholder="Type a domain, e.g. nation.africa"></div>
-        <div id="website-lists" class="website-grid"></div>
-        <p class="scale-note">Bars use a separate scale in each list so local websites stay readable. Compare the exact numbers across groups. A website is a registered domain, not necessarily an independent owner.</p>
-      </section>
-      <details class="panel table-panel optional-panel" id="all-websites"><summary>All websites, other countries & origin details</summary><div class="optional-body">
-        <div class="section-top"><div><div class="eyebrow">ALL ORIGINS</div><h2>All publishing websites</h2><p>Search all groups, inspect country clues, or export website coverage counts.</p></div><button class="secondary" id="export-outlets">Export filtered table ↓</button></div>
-        <div class="table-filters"><label class="search-label"><span class="sr-only">Search outlets or countries</span><input type="search" id="search" placeholder="Search outlet or country…"></label><label><span class="sr-only">Outlet group</span><select id="table-group"><option value="">All outlet groups</option><option>Chinese</option><option>Local</option><option>Third country</option><option>Unknown or uncertain</option></select></label><span id="table-total"></span></div>
-        <div class="table-scroll"><table><thead><tr><th><button data-sort="outlet">Website ↕</button></th><th><button data-sort="group">Group ↕</button></th><th>Country clues</th><th class="numeric"><button data-sort="articles">Coverage volume ↓</button></th><th class="numeric"><button data-sort="active_days">Days with coverage ↕</button></th><th>Classification basis</th></tr></thead><tbody id="outlet-body"></tbody></table></div>
-        <div class="pagination"><span id="page-label"></span><div><button class="secondary" id="previous">← Previous</button><button class="secondary" id="next">Next →</button></div></div>
-      </div></details>
-      <details class="panel optional-panel" id="time-breakdown"><summary>Coverage over time: exact website counts & volumes</summary><div class="optional-body">
-        <div class="section-top"><div><h2>Time breakdown</h2><p>Local and Chinese counts in separate columns. Change day, week, month or year in the sidebar.</p></div><button class="secondary" id="export-timeline">Download all periods ↓</button></div>
-        <div class="table-scroll"><table><thead><tr><th>Period begins</th><th class="numeric">Local websites</th><th class="numeric">Local volume</th><th class="numeric">Chinese websites</th><th class="numeric">Chinese volume</th><th>Source coverage</th></tr></thead><tbody id="timeline-body"></tbody></table></div>
-        <div class="pagination"><span id="timeline-page"></span><div><button class="secondary" id="timeline-previous">← Previous</button><button class="secondary" id="timeline-next">Next →</button></div></div>
-      </div></details>
-      <details class="panel assessment-panel optional-panel"><summary>Optional: check coverage against your research criteria</summary><div class="optional-body">
-        <div class="section-top"><div><div class="eyebrow">YOUR RESEARCH CRITERIA</div><h2>Enough coverage for your study?</h2><p>Set your own minimums. These are screening rules, not a validated quality score.</p></div><span id="assessment-badge" class="badge"></span></div>
-        <div class="criteria"><label>Outlets per group, per period<input type="number" id="min-outlets" min="1" max="1000" value="3"></label><label>Observations per group, per period<input type="number" id="min-articles" min="1" max="1000000" value="20"></label><label>Required periods meeting both<input type="number" id="min-coverage" min="1" max="100" value="80"><span class="input-unit">%</span></label></div>
-        <div class="assessment-body"><div><strong class="assessment-number" id="assessment-value">—</strong><p id="assessment-text"></p><p class="muted" id="assessment-exclusion"></p></div><div id="coverage-strip" class="coverage-strip" aria-label="Periods meeting your criteria"></div></div>
-        <div id="assessment-findings" class="findings"></div>
-      </div></details>
-      <details class="panel methodology" id="methodology"><summary>How to read this audit <span>Definitions, source gaps & limitations</span></summary>
-        <div class="method-grid"><div><h3>What is being counted?</h3><p>One daily record counts distinct article URLs within one outlet and country pair. A URL seen on different days can count on each day. Weekly, monthly and yearly sums are <strong>daily URL observations</strong>, not distinct articles over those longer periods. Website counts use distinct registered domains: subdomains are grouped together. Each website is counted once across the selected date range, and once within each interval in the time breakdown.</p><h3>What does “local” mean?</h3><p>Local means the estimated publisher country matches the target. Chinese means the estimate is China. Third country means another known country. This says where the publishing outlet is provisionally assigned, not who wrote a syndicated article or which audience read it.</p></div><div><h3>How are countries assigned?</h3><p>GDELT's 2015–2021 coverage-based estimate is compared with country-domain clues. Disagreements remain uncertain. Agreement is not proof of headquarters or ownership. Domains can be used internationally, and historical outlets may have changed location.</p><h3>What does this audit establish?</h3><p>It helps select pairs and periods with enough usable source coverage. Chinese publishing origin does not establish a soft-power campaign. Local reporting is not a measurement of public opinion. Identifying strategy and audience response needs further evidence.</p></div><div><h3>How do stories enter a pair?</h3><p>Chinese-classified outlets contribute target countries mentioned in GDELT's extracted locations. Other known outlets contribute their own country when China is mentioned, plus countries mentioned alongside China. Uncertain outlets require both China and the target. The same story can contribute to multiple pairs.</p><h3>Missing dates and incomplete periods</h3><p>Missing source days are marked, never silently treated as zero coverage. The research-criteria check excludes periods containing missing source days. Periods at the edges are evaluated only over the selected dates. Days use GDELT's UTC observation date, not a verified publication date.</p></div></div>
-        <p class="method-sources">Sources: <a href="https://blog.gdeltproject.org/mapping-the-media-a-geographic-lookup-of-gdelts-sources-2015-2021/amp/" target="_blank" rel="noopener">GDELT outlet estimates</a> · <a href="https://www.iana.org/domains/root/db" target="_blank" rel="noopener">IANA country domains</a> · <a href="./data/provenance.json">Snapshot provenance</a></p>
-      </details>
-      <footer>softpower-audit <span>Daily data · 2015–2025 · Research snapshot, 19 September 2026</span></footer>
-    </div>
-  </main>
-</div>
-</body></html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Browse publishing websites and their coverage of China by source country and observation date."><title>China news audit · softpower-audit</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="browser.css?v=country-browser-1"><script src="config.js" defer></script><script src="audit.js" defer></script><script src="kenya/dates.js" defer></script><script src="browser.js?v=country-browser-1" defer></script></head><body>
+<header class="masthead"><a class="brand" href="./">softpower-audit</a><label class="country-heading" for="source-country">Source country<select id="source-country" aria-label="Source country" disabled><option>Loading countries…</option></select></label></header>
+<main class="kenya-main"><div class="eyebrow">LOCAL PUBLISHING WEBSITES</div><div class="title-row"><div><h1 id="page-title">Sources on China</h1></div></div>
+
+<div id="status" class="status" role="status">Loading sources…</div><button id="retry" class="secondary" hidden>Retry</button>
+<div id="content" hidden>
+
+<div class="source-layout"><aside class="source-sidebar" aria-label="Dates and websites"><section class="timeline-panel" aria-labelledby="timeline-title">
+ <div class="timeline-heading"><div><h2 id="timeline-title">Observation date</h2></div><button id="clear-dates" class="secondary" type="button">Clear</button></div>
+ <div id="date-histogram" class="date-histogram" role="img" aria-label="Monthly URL counts across 2015–2025"></div>
+ <div class="date-slider"><div class="slider-rail"></div><div id="selected-track" class="selected-track"></div><input type="range" id="range-start" min="0" max="30" step="1" value="0" aria-label="Start observation date"><input type="range" id="range-end" min="0" max="30" step="1" value="30" aria-label="End observation date"></div>
+ <p id="selected-dates" class="selected-dates" role="status" aria-live="polite"></p>
+ <details class="exact-dates"><summary>Exact dates</summary><form id="date-form"><label for="date-start">From<input type="date" id="date-start" required></label><label for="date-end">Through<input type="date" id="date-end" required></label><button class="secondary" type="submit">Apply dates</button></form><p id="date-error" class="date-error" role="alert" hidden></p></details>
+</section>
+<section class="source-panel" aria-labelledby="sources-title"><div class="source-heading"><h2 id="sources-title">Websites</h2></div><div id="source-list"></div></section>
+</aside><div class="results-column"><section class="filter-panel" aria-label="Filter the collected articles"><div class="main-filters"><label for="country-source">Website country source<select id="country-source"><option value="gdelt">GDELT country</option><option value="cctld">ccTLD country</option><option value="both">GDELT + ccTLD</option></select></label><label for="mode">Geographic mentions<select id="mode"><option value="broad">China mentioned · all candidates</option><option value="both">China and source country</option><option value="only_pair">Only China and source country</option></select></label></div><div class="filter-options"><label><input id="place" type="checkbox"><span id="place-label">Specific city or region in the source country</span></label><button id="reset" class="text-button">Reset filters</button></div></section>
+<div class="results-line" role="status" aria-live="polite"><strong id="matched"></strong><span>Click a source to narrow the article list.</span></div>
+<section class="articles-panel" aria-labelledby="articles-title"><div class="article-heading"><div><h2 id="articles-title">All sources</h2><p id="article-count"></p></div><button id="export" class="secondary">Export this page ↓</button></div><div id="active-source" hidden><button id="clear-source" class="text-button">← Show all websites</button></div><div id="article-list"></div><div class="pagination"><span id="page-label"></span><div><button id="previous" class="secondary">← Previous</button><button id="next" class="secondary">Next →</button></div></div></section></div></div>
+
+</div></main></body></html>

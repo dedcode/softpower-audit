@@ -1,140 +1,73 @@
 # softpower-audit
 
-A public research dashboard for inspecting the balance, diversity and continuity
-of local and Chinese news outlet coverage for a China–country pair.
+The public interface at https://djelleldifallah.com/softpower-audit/ is a single
+article browser. Select the publishing country in the header, set observation
+dates in the left panel, select a website, and open article links. `/kenya/` and
+`/pilot/` redirect to this interface, preserving query parameters.
 
-The interface is published at **https://djelleldifallah.com/softpower-audit/**.
-The `dedcode.github.io` Pages account uses this existing custom domain.
+## Data
 
-## What it does
+The browser queries `citygraph.softpower.china_articles`: 80,646,046 distinct
+URL/day observations covering 2015–2025, extracted from GDELT. The extraction
+includes known non-Chinese publisher estimates and detected China mentions.
+Origin estimates are provisional; publisher type, ownership and article focus
+are not verified. Unknown GDELT publisher origins and China-assigned publishers
+are excluded from this underlying table, even when using the ccTLD filter.
 
-- Select any of the 267 observed target geographic codes and any date range
-  within 2015–2025. The catalog includes countries, territories and historical
-  or special codes; it is not a list of 267 sovereign countries.
-- Aggregate **daily** counts into days, Monday-based weeks, months or years.
-- Start with side-by-side local and Chinese website rankings: unique registered
-  domain counts, exact coverage volumes, days with coverage, search, pagination
-  and per-group CSV exports. Bars use separate scales explicitly labeled as such.
-- Inspect exact website counts and volumes over time in an optional table.
-- Set minimum outlets and observations for **both** Chinese and local groups,
-  and choose the required proportion of complete periods.
-- Inspect classification conflicts and source gaps in expandable detail sections.
-- Search/sort the outlet table, export the filtered table or timeline as CSV,
-  and copy a URL that reproduces the pair, period, interval and criteria.
+Country codes are GDELT FIPS, not ISO. The header includes the 234 observed
+non-China geographic codes present in either publisher-origin field; these
+include territories and special codes. `article-catalog.json` provides labels.
 
-## Data and interpretation
+**Interface counts are distinct URLs within the selected dates**, deduplicated
+across observation days. Monthly histogram bars count distinct URLs within each
+month and should not be summed to obtain the full-period unique URL count.
+Article rows display the latest qualifying observation date and its detected
+countries; expanding a row fetches its corresponding local place names.
 
-The source is a saved BigQuery table with **182,660,570 daily outlet/pair rows**,
-extracted on 19 September 2026. It covers all 3,953 available source days within
-the requested window. No source partitions exist for:
+The geographic filters require a China mention (already true for the corpus),
+optionally the source country, or only that pair. A specific-place filter
+requires a city/landmark or administrative-region mention in the selected source
+country. These filters describe GDELT detections, not verified article subjects.
+The same URL may qualify on some observation days and not others.
 
-- 1 January–16 February 2015;
-- 29 August 2017;
-- 15 June–1 July 2025.
-
-Daily counts deduplicate a URL within its day, pair and outlet. A URL observed
-on different days can count on each day. Longer-period sums are consequently
-**daily URL observations**, not period-wide distinct article counts. Active
-outlets are counted distinctly within each requested interval, never summed
-from daily distinct counts. Domains do not necessarily represent independent
-owners, and syndicated stories remain separate publisher URLs.
-
-Outlet origin uses GDELT's geographic coverage estimate and country-domain
-clues. All origin labels are **provisional**, including agreement between these
-clues. Conflicts remain uncertain. Chinese outlet origin does not establish a
-soft-power campaign, and local reporting does not measure public opinion.
-Historical classifications use a 2015–2021 estimate and can contain lookahead
-or stale-location errors. Unknown-origin publishers require geographic
-co-mentions, which can undercount local coverage without a home-country mention.
-
-Sources: [GDELT outlet-estimate methodology](https://blog.gdeltproject.org/mapping-the-media-a-geographic-lookup-of-gdelts-sources-2015-2021/amp/),
-[IANA country-code domains](https://www.iana.org/domains/root/db),
-[GeoNames country references](https://www.geonames.org/export/).
-See `docs/data/provenance.json` for dates and observed target codes.
+GDELT has no source partitions for 1 January–16 February 2015, 29 August 2017,
+and 15 June–1 July 2025. 17 February 2015 has 25 source records but no China mentions.
 
 ## Architecture
 
-`docs/` is a dependency-free HTML/CSS/JavaScript site on GitHub Pages.
-`backend/` is a FastAPI service on Cloud Run. The service runs a fixed,
-parameterized query over the saved daily BigQuery table. It returns only the
-selected aggregate results; it never rescans the original GDELT corpus.
+`docs/` is the static GitHub Pages frontend. `backend/articles.py` serves
+parameterized, read-only `/browse`, `/stories`, `/article-places`, and
+`/article-catalog` routes on the existing Cloud Run service. The older aggregate
+API remains available for compatibility but has no separate website interface.
 
-Three full-window monthly seed views are saved in `docs/data/` for fast startup.
-Other selections use the API. Filters within the loaded outlet table, research
-criteria, website ranking pages, and CSV export run locally without additional queries.
+Overview queries return website rankings and the monthly histogram. Story
+queries return 20 distinct URLs per page; pagination does not truncate the
+corpus. Full location strings are fetched only when a story's details are
+opened. CSV export is explicitly the currently displayed page.
 
-The Cloud Run identity has `bigquery.jobUser` on the project and
-`bigquery.dataViewer` on **only the extracted table**. No service-account keys
-or user credentials are embedded in the site. The API is deliberately public;
-its CORS policy allows the GitHub Pages origin and the existing custom domain
-(`https://djelleldifallah.com` and its `www` variant). CORS is not authentication.
-
-Cost controls: one maximum Cloud Run instance, zero minimum instances, one
-concurrent uncached query, 30 uncached queries per hour per running process,
-64 MiB of application response cache, BigQuery result caching, and a 16 GiB
-maximum billed scan per query (about $0.10 before free allowances at $6.25/TiB).
-The process rate limiter resets on instance replacement: these controls are
-**not a guaranteed monthly spending cap**. Requests beyond the allowance get
-a retry message. Keep Cloud Billing monitoring enabled if traffic grows.
+The service identity has table-scoped BigQuery read access to the article table
+and the earlier daily aggregate table. Credentials never reach the browser.
+Existing protections remain: one Cloud Run instance, one uncached query at a
+time, 30 uncached queries per process/hour, a 64 MiB response cache, and a 16 GiB
+billing ceiling per query. These are not a guaranteed monthly spending cap.
 
 ## Development and deployment
 
-Frontend: serve `docs/` with any static HTTP server. Configure the API URL in
-`docs/config.js`. Changes in `docs/` publish from the `main` branch through
-GitHub Pages. This project does not modify the main `dedcode.github.io` site.
+Frontend configuration: `docs/config.js`. GitHub Pages publishes `docs/` from
+`main`. API: install `backend/requirements.txt`, then run `uvicorn main:app`
+inside `backend/`, setting `ALLOWED_ORIGINS` for local development as needed.
 
-Backend: install `backend/requirements.txt`, then run `uvicorn main:app` from
-`backend/`. Local development can set `ALLOWED_ORIGINS=http://127.0.0.1:8811`.
-`scripts/deploy_api.py` deploys the backend using local Google ADC and a
-short-lived token file that is removed afterward. Deployment metadata stays in
-the git-ignored `deployment-private/` directory. `scripts/configure_cloud.py`
-documents the scoped identities and IAM grants used for this deployment.
+`scripts/prepare_article_browser.py` preserves IAM bindings while granting the
+existing reader identity table access, refreshes the observed-country catalog,
+and validates Kenya January 2025 against 429 URLs. `scripts/deploy_api.py`
+deploys Cloud Run with local ADC and a short-lived token file removed afterward.
 
-Tests:
+Checks:
 
 ```sh
-node tests/test_audit.js
 python3 tests/test_backend.py
+python3 tests/test_articles.py
+node tests/test_kenya_dates.js
+node tests/test_audit.js
+node --check docs/browser.js
 ```
-
-The BigQuery grouping query was also validated with synthetic records across
-days, proving that repeated outlets are counted distinctly within a period.
-
-## January 2025 China–Kenya filter pilot
-
-`docs/pilot/` publishes the completed one-month pilot: all 4,122 candidate URLs,
-per-website counts for broad/both-country/only-pair/only-pair-with-place filters,
-CSV downloads, and 24 qualitative article checks (23 bodies and one paywalled
-preview). This static page incurs no live BigQuery queries when browsed. The
-main historical dashboard remains on its original broad counting definition.
-The pilot does not establish filter accuracy; it demonstrates retained relevant
-stories, false positives, excluded relevant coverage and observation-date issues.
-
-## Kenyan sources on China
-
-`docs/kenya/` is a dedicated local-source browser for the January 2025 pilot.
-It includes all 429 URLs from the 17 websites provisionally assigned Kenya,
-including stories with a China mention and no Kenyan geographic mention.
-Select a website, apply optional geographic filters, and export the selection.
-The Kenya page does not load or display AI review annotations.
-The left sidebar places the observation-date selector above the website list.
-The histogram has two draggable, keyboard-accessible range
-handles and expandable exact date inputs. Date selection updates
-website counts, article links, and CSV export together; shared URLs preserve the
-selected dates. The histogram keeps the whole available month visible and follows
-the selected website and geographic filters. Clear restores the full date range.
-The available range is January 2025, using GDELT observation dates rather than
-verified publication dates. URLs observed more than once count once per selected
-period, while daily histogram bars count each day's distinct URLs.
-Article labels are derived from URL paths, rather than verified headlines.
-The page is static; browsing causes no BigQuery queries. Rebuild the subset
-from the pilot with `python3 scripts/build_kenya_view.py`.
-
-The Kenya website-country filter uses the saved `estimated_country` (GDELT)
-and `domain_country` (ccTLD) fields. GDELT requires Kenya in the first field;
-ccTLD requires Kenya in the second; GDELT + ccTLD requires both. These are
-inclusive evidence filters, not mutually exclusive classification categories.
-In this pilot they yield 429 URLs / 17 websites, 334 / 7, and 334 / 7 respectively.
-The result summary counts URLs and unique websites after every active filter,
-including a selected website. CSV exports include the chosen country-source
-filter and both saved country fields.
