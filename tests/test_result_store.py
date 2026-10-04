@@ -3,6 +3,7 @@ import io
 import json
 import sys
 import time
+import threading
 import tracemalloc
 import unittest
 from collections import defaultdict, deque
@@ -116,6 +117,7 @@ class ResultStoreTests(unittest.TestCase):
         run.config = {'dataset': 'project.dataset'}
         run.last_checkpoint = run.last_bq = time.monotonic()
         run.queues = defaultdict(deque)
+        run.inflight_items = {}
         run.lease_update = Mock()
         run.bq = Mock()
         run.loads = []
@@ -189,6 +191,62 @@ class ResultStoreTests(unittest.TestCase):
         run.progress = Mock()
         with self.assertRaises(RuntimeError):run.run()
         self.assertEqual(run.progress.call_args.args[:2], ('failed', 85993))
+
+    def assert_failed_worker_drains(self, fail_after_recording=False):
+        rows = [{'url': 'https://news.ke/' + str(i), 'outlet': 'news.ke'} for i in range(3)]
+        run = self.new_run({'runs/test/inputs.json.gz': gzip.compress(json.dumps(rows).encode())})
+        run.recovery = Mock()
+        run.country = 'KE';run.run_id = 'test';run.execution = 'test-execution'
+        run.started = time.monotonic();run.active = {};run.paused = {}
+        run.fetcher = Mock();run.lease = Mock()
+        run.config.update(workers=2, per_outlet_workers=2, max_runtime_seconds=1000,
+                          max_response_bytes=100000, max_total_attempts=10000)
+        failure = RuntimeError('first failure')
+        release_success = threading.Event()
+        reports = []
+        fetched = []
+        def report(state, total, error=None):
+            reports.append((state, len(run.done), len(run.active), sum(map(len, run.queues.values())), error))
+            if state == 'failed':release_success.set()
+            return {'response_bytes': 0, 'attempts': 0}
+        run.progress = Mock(side_effect=report)
+        def fetch(item, *_):
+            fetched.append(item['url'])
+            if item == rows[0] and not fail_after_recording:raise failure
+            if item == rows[1]:
+                if not release_success.wait(2):raise AssertionError('Worker did not report failure while draining')
+            return result(key(item['url']))
+        run.fetcher.fetch.side_effect = fetch
+        if fail_after_recording:
+            record = run.result
+            def fail_once(row):
+                record(row)
+                if row['article_id'] == key(rows[0]['url']):raise failure
+            run.result = fail_once
+        with patch('worker.memory_usage', return_value={}):
+            with self.assertRaises(RuntimeError) as caught:run.run()
+        self.assertIs(caught.exception, failure)
+        self.assertEqual(set(fetched), {rows[0]['url'], rows[1]['url']})
+        self.assertFalse(run.active);self.assertFalse(run.inflight_items)
+        expected = [rows[2]] if fail_after_recording else [rows[0], rows[2]]
+        self.assertEqual(list(run.queues['news.ke']), expected)
+        self.assertIn(key(rows[1]['url']), run.done)
+        persisted = [json.loads(line) for name, data in run.bucket.data.items()
+                     if '/checkpoints/' in name for line in gzip.decompress(data).splitlines()]
+        self.assertIn(key(rows[1]['url']), {row['article_id'] for row in persisted})
+        if fail_after_recording:self.assertIn(key(rows[0]['url']), run.done)
+        else:self.assertNotIn(key(rows[0]['url']), run.done)
+        failed_reports = [r for r in reports if r[0] == 'failed']
+        self.assertTrue(any(r[2] == 1 for r in failed_reports))
+        self.assertTrue(all(r[1] + r[2] + r[3] == 3 for r in reports))
+        self.assertEqual(reports[-1][0], 'failed')
+        self.assertIn('first failure', reports[-1][4])
+
+    def test_failing_future_preserves_later_success_before_reraising(self):
+        self.assert_failed_worker_drains()
+
+    def test_result_exception_does_not_requeue_already_recorded_article(self):
+        self.assert_failed_worker_drains(fail_after_recording=True)
 
     def test_input_manifest_only_queues_unfinished_urls(self):
         rows = [{'url': 'https://news.ke/' + str(i), 'outlet': 'news.ke'} for i in range(5)]

@@ -5,6 +5,7 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit,urljoin
 from urllib.robotparser import RobotFileParser
 import requests
+from contextlib import contextmanager
 
 AGENT='ChinaNewsResearchBot'
 UA=AGENT+'/1.0 (+https://djelleldifallah.com/softpower-audit/extraction-status/)'
@@ -25,25 +26,80 @@ def retry_seconds(value,attempt):
         try:return max(5,(parsedate_to_datetime(value)-datetime.now(timezone.utc)).total_seconds())
         except Exception:return min(120,10*2**(attempt-1))
 
+class HostCooldown(requests.RequestException):
+    """A server-requested pause is longer than an individual bounded wait."""
+    def __init__(self,host,seconds):
+        self.retry_after_seconds=seconds
+        super().__init__(f'{host} is cooling down; retry after {seconds:.0f} seconds')
+
 class Fetcher:
     parse_initial=True
     def __init__(self,bucket,run_id,delay=3,max_attempts=3):
         self.bucket=bucket;self.run_id=run_id;self.delay=delay;self.max_attempts=max_attempts
-        self.lock=threading.Lock();self.hostlocks={};self.last={};self.robots={}
+        self.lock=threading.Lock();self.hostlocks={};self.last={};self.robots={};self.queue_wait=threading.local();self.cooldowns={}
     def hostlock(self,host):
         with self.lock:return self.hostlocks.setdefault(host,threading.Lock())
+    def host_queue_wait_seconds(self):
+        return self.host_queue_observer()()
+    def host_queue_observer(self):
+        # Capture this article thread's state, not threading.local itself: the
+        # browser watchdog reads it from a separate thread while a lock waits.
+        if not hasattr(self.queue_wait,'state'):self.queue_wait.state=[(0.,None)]
+        state=self.queue_wait.state
+        state[0]=(getattr(self.queue_wait,'seconds',0.),state[0][1])
+        def observe():
+            total,started=state[0]
+            return total+(time.monotonic()-started if started is not None else 0.)
+        return observe
+    @contextmanager
+    def queued_wait(self):
+        self.host_queue_observer()
+        state=self.queue_wait.state;total,_=state[0]
+        state[0]=(total,time.monotonic())
+        try:yield
+        finally:
+            total,started=state[0]
+            total+=time.monotonic()-started
+            self.queue_wait.seconds=total;state[0]=(total,None)
+    @contextmanager
+    def queued_host_lock(self,host):
+        # Count only acquisition time, not time spent holding an outer robots
+        # lock. Nested publisher/robots locks therefore do not double-count.
+        lock=self.hostlock(host)
+        with self.queued_wait():lock.acquire()
+        try:yield
+        finally:lock.release()
+    @contextmanager
+    def host_slot(self,host,delay=None):
+        with self.queued_host_lock(host):
+            self.wait_for_host_cooldown(host)
+            gap=max(self.delay,delay or 0)-(time.monotonic()-self.last.get(host,0))
+            if gap>0:
+                with self.queued_wait():time.sleep(gap)
+            self.last[host]=time.monotonic()
+            yield
     def put(self,path,data,content_type):
         blob=self.bucket.blob(path);blob.upload_from_string(data,content_type=content_type,timeout=60)
         return 'gs://'+self.bucket.name+'/'+path
+    def defer_host(self,host,seconds):
+        # Caller retains the host lock until the response is handled. All
+        # article threads and archive lookups therefore observe the same pause.
+        self.cooldowns[host]=max(self.cooldowns.get(host,0),time.monotonic()+seconds)
+    def wait_for_host_cooldown(self,host):
+        # Called with the host lock held, before admitting any HTTP/browser
+        # request. Long pauses remain retryable without tying up a thread or
+        # sending another request against the server's Retry-After instruction.
+        remaining=self.cooldowns.get(host,0)-time.monotonic()
+        if remaining>120:raise HostCooldown(host,remaining)
+        if remaining>0:
+            with self.queued_wait():time.sleep(remaining)
     def one(self,url,delay=None):
         p=public_url(url)
-        with self.hostlock(p.hostname):
-            gap=max(self.delay,delay or 0)-(time.monotonic()-self.last.get(p.hostname,0))
-            if gap>0:time.sleep(gap)
-            self.last[p.hostname]=time.monotonic()
+        with self.host_slot(p.hostname,delay):
             with requests.Session() as s:
                 s.trust_env=False
                 with s.get(url,headers={'User-Agent':UA,'Accept':'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'},timeout=(10,25),allow_redirects=False,stream=True) as r:
+                    if r.status_code in (429,503):self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
                     data=bytearray();oversize=False;began=time.monotonic()
                     for chunk in r.iter_content(65536):
                         data.extend(chunk)
@@ -51,7 +107,7 @@ class Fetcher:
                     return r.status_code,requests.structures.CaseInsensitiveDict(r.headers),bytes(data[:MAX_BODY]),oversize
     def policy(self,url):
         p=public_url(url);origin=p.scheme+'://'+p.netloc
-        with self.hostlock('robots:'+origin):
+        with self.queued_host_lock('robots:'+origin):
             if origin in self.robots:return self.robots[origin]
             robot_url=origin+'/robots.txt';original=robot_url
             for _ in range(4):
@@ -131,7 +187,7 @@ class Fetcher:
                 retry=result['status'] in ('rate_limited','temporary_error')
                 wait=retry_seconds(headers.get('Retry-After'),attempt) if retry else 0
             except (requests.RequestException,socket.gaierror,TimeoutError) as e:
-                result.update(status='temporary_error',error=type(e).__name__+': '+str(e)[:250]);event['status']=result['status'];retry=True;wait=retry_seconds(None,attempt)
+                result.update(status='temporary_error',error=type(e).__name__+': '+str(e)[:250]);event['status']=result['status'];retry=True;wait=getattr(e,'retry_after_seconds',retry_seconds(None,attempt))
             except ValueError as e:
                 result.update(status='needs_inspection',error=str(e));event['status']=result['status'];retry=False;wait=0
             event['finished_at']=now();result['attempts'].append(event)

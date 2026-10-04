@@ -1,6 +1,7 @@
 """Bounded cloud verification: saved originals, local JS fixture, compact index."""
 import gc,gzip,hashlib,json,os,threading,time
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+from concurrent.futures import ThreadPoolExecutor
 from google.cloud import storage
 from isolation import extract_isolated,render_isolated,IsolationError
 from result_store import ResultIndex,memory_usage
@@ -8,17 +9,19 @@ from result_store import ResultIndex,memory_usage
 def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
 
 def main():
-    bucket=storage.Client().bucket(os.environ['CRAWL_BUCKET']);prefix='verification/memory-v1/'
+    bucket=storage.Client().bucket(os.environ['CRAWL_BUCKET']);prefix=os.environ.get('VERIFY_PREFIX','verification/memory-v1/')
     samples=[];done=threading.Event()
     def sample():
         while not done.wait(.1):samples.append(memory_usage().get('current_bytes',0))
     thread=threading.Thread(target=sample,daemon=True);thread.start()
     report={'started_memory':memory_usage()}
     try:
-        inputs=json.loads(bucket.blob(prefix+'inputs.json').download_as_text())
-        for row in inputs:
+        inputs=json.loads(bucket.blob('verification/memory-v1/inputs.json').download_as_text())
+        def verify_original(row):
             raw=gzip.decompress(bucket.blob(row['raw_uri'].split('/'+bucket.name+'/',1)[1]).download_as_bytes())
             result=extract_isolated(raw,row['url']);assert digest(result)==row['expected'],row['url']
+        with ThreadPoolExecutor(max_workers=int(os.environ.get('CRAWL_HEAVY_SLOTS','1'))) as pool:
+            list(pool.map(verify_original,inputs))
         report['identical_saved_page_outputs']=len(inputs)
         index=ResultIndex()
         for i in range(100000):
@@ -32,10 +35,18 @@ def main():
             def log_message(self,*args):pass
         server=ThreadingHTTPServer(('127.0.0.1',0),H);threading.Thread(target=server.serve_forever,daemon=True).start();url='http://127.0.0.1:'+str(server.server_port)+'/article'
         try:
-            for _ in range(3):
+            def verify_browser():
                 body,source=render_isolated(url,lambda u,d:u==url)
                 result=extract_isolated(body,source);assert result['quality']=='candidate';assert result['text'].count('Reporting about investment and cooperation.')==30
+            # Exercise the shared limit with a browser and parsers together.
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                jobs=[pool.submit(verify_browser) for _ in range(3)]
+                jobs.extend(pool.submit(verify_original,row) for row in inputs[:6])
+                for job in jobs:job.result()
             report['javascript_render_repetitions']=3
+            report['parallel_parser_browser_check']=True
+            report['heavy_slots']=int(os.environ.get('CRAWL_HEAVY_SLOTS','1'))
+            report['browser_slots']=int(os.environ.get('CRAWL_BROWSER_SLOTS','1'))
             try:render_isolated(url,lambda u,d:False)
             except IsolationError:report['request_denial_preserved']=True
             else:raise AssertionError('Browser bypassed request approval')

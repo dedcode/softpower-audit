@@ -1,14 +1,45 @@
 """Private subprocess entry point. No persistent browser; request approval is delegated to the parent."""
-import json,sys
+import json,sys,time
 from pathlib import Path
+
+
+def navigate(page,url,queue_wait_seconds,timeout_seconds=35):
+    """Give navigation its normal work budget after measured host queue waits."""
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+    responses=[]
+    def capture(response):
+        if response.request.is_navigation_request() and response.frame==page.main_frame:
+            responses.append(response)
+    page.on('response',capture)
+    started=time.monotonic();queued_at_start=queue_wait_seconds();credited=0.
+    try:
+        try:return page.goto(url,wait_until='domcontentloaded',timeout=timeout_seconds*1000)
+        except BrowserTimeout:
+            while True:
+                queued=max(0.,queue_wait_seconds()-queued_at_start)
+                remaining=timeout_seconds-(time.monotonic()-started-queued)
+                if queued<=credited or remaining<=0:raise
+                credited=queued
+                try:
+                    # A timed-out goto can still be waiting for its first
+                    # response. Waiting only for load state on about:blank
+                    # would report success before navigation commits.
+                    page.wait_for_url(lambda value:str(value)!='about:blank',
+                        wait_until='domcontentloaded',timeout=remaining*1000)
+                    return responses[-1] if responses else None
+                except BrowserTimeout:continue
+    finally:page.remove_listener('response',capture)
 
 
 def render(root,url):
     from playwright.sync_api import sync_playwright
     from crawl import UA,MAX_BODY
+    queued=[0.]
     def authorize(url,document):
         print(json.dumps({'type':'authorize','url':url,'document':document}),flush=True)
-        return json.loads(sys.stdin.readline()).get('allowed',False)
+        reply=json.loads(sys.stdin.readline())
+        queued[0]+=max(0.,float(reply.get('queue_wait_seconds',0.)))
+        return reply.get('allowed',False)
     if not authorize(url,True):raise RuntimeError('Robots policy does not permit rendering')
     with sync_playwright() as p:
         browser=p.chromium.launch(headless=True,args=['--disable-dev-shm-usage'])
@@ -23,7 +54,7 @@ def render(root,url):
                     route.continue_()
                 except Exception:route.abort()
             page.route('**/*',guard)
-            response=page.goto(url,wait_until='domcontentloaded',timeout=35000)
+            response=navigate(page,url,lambda:queued[0])
             if response is None or response.status!=200:raise RuntimeError('Browser did not receive HTTP 200')
             try:page.wait_for_load_state('networkidle',timeout=8000)
             except Exception:pass

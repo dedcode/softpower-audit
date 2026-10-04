@@ -1,4 +1,4 @@
-"""Short-lived extraction processes; one expensive task at a time per worker.
+"""Short-lived extraction processes with bounded concurrency per worker.
 
 Browser request approval stays in the parent so robots checks and host pacing
 are shared with HTTP retrieval. Killing a process group also stops Chromium.
@@ -16,7 +16,15 @@ from pathlib import Path
 from contextlib import contextmanager
 from result_store import memory_usage
 
-HEAVY_SLOT = threading.Lock()
+def slot_count(name):
+    count = int(os.environ.get(name, '1'))
+    if count < 1:
+        raise ValueError(f'{name} must be a positive integer')
+    return count
+
+
+HEAVY_SLOT = threading.BoundedSemaphore(slot_count('CRAWL_HEAVY_SLOTS'))
+BROWSER_SLOT = threading.BoundedSemaphore(slot_count('CRAWL_BROWSER_SLOTS'))
 ROOT = Path(__file__).resolve().parent
 WAIT = threading.local()
 MEMORY_LIMIT_FRACTION = .85
@@ -28,11 +36,23 @@ def queue_wait_seconds():
 
 
 @contextmanager
-def heavy_slot():
+def queued_slot(slot):
     started = time.monotonic()
-    with HEAVY_SLOT:
+    with slot:
         WAIT.seconds = queue_wait_seconds() + time.monotonic() - started
         yield
+
+
+@contextmanager
+def heavy_slot(kind='extract'):
+    if kind == 'render':
+        # Reserve the narrower browser capacity first. A queued browser must
+        # not occupy a shared slot that could otherwise run an extraction.
+        with queued_slot(BROWSER_SLOT), queued_slot(HEAVY_SLOT):
+            yield
+    else:
+        with queued_slot(HEAVY_SLOT):
+            yield
 
 
 class IsolationError(RuntimeError):
@@ -61,8 +81,8 @@ def stop(proc, already_signaled=False):
     proc.wait(timeout=10)
 
 
-def run_task(kind, body=None, url=None, authorize=None, timeout=90):
-    with heavy_slot(), tempfile.TemporaryDirectory(prefix='article-') as directory:
+def run_task(kind, body=None, url=None, authorize=None, timeout=90, queue_wait=None):
+    with heavy_slot(kind), tempfile.TemporaryDirectory(prefix='article-') as directory:
         root = Path(directory)
         if body is not None:
             (root / 'input.html').write_bytes(body)
@@ -79,13 +99,15 @@ def run_task(kind, body=None, url=None, authorize=None, timeout=90):
         failure = []
         signaled = threading.Event()
         deadline = time.monotonic() + timeout
+        queue_wait = queue_wait or (lambda: 0.)
+        queued_at_start = queue_wait()
 
         def watch():
             # The main thread may be blocked inside authorize (robots or host
             # pacing), or reading a child message. Resource checks must continue.
             while not finished.is_set() and proc.poll() is None:
                 reason = None
-                if time.monotonic() >= deadline:
+                if time.monotonic() >= deadline + max(0., queue_wait() - queued_at_start):
                     reason = kind + ' exceeded time limit'
                 elif memory_pressure():
                     reason = kind + ' interrupted at container memory safety threshold'
@@ -115,12 +137,14 @@ def run_task(kind, body=None, url=None, authorize=None, timeout=90):
                     event = json.loads(line)
                     if not isinstance(event, dict) or event.get('type') != 'authorize':
                         raise IsolationError('Unexpected subprocess message')
+                    queued_before = queue_wait()
                     try:
                         allowed = bool(authorize(event['url'], event['document']))
                     except Exception:
                         allowed = False
+                    queued = max(0., queue_wait() - queued_before)
                     check_guard()
-                    proc.stdin.write(json.dumps({'allowed': allowed}) + '\n')
+                    proc.stdin.write(json.dumps({'allowed': allowed, 'queue_wait_seconds': queued}) + '\n')
                     proc.stdin.flush()
             check_guard()
             if proc.returncode:
@@ -158,5 +182,5 @@ def extract_isolated(body, url):
     return run_task('extract', body=body, url=url, timeout=60)
 
 
-def render_isolated(url, authorize):
-    return run_task('render', url=url, authorize=authorize, timeout=150)
+def render_isolated(url, authorize, queue_wait=None):
+    return run_task('render', url=url, authorize=authorize, timeout=150, queue_wait=queue_wait)

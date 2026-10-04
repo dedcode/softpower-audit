@@ -1,6 +1,6 @@
 # Article collection pipeline
 
-Status: deployed on 2026-10-03 after approval. The Kenya pilot completed; the full collection has not been launched. Public progress: https://djelleldifallah.com/softpower-audit/extraction-status/?country=KE .
+Status: the full Kenya collection is running (85,993 URLs). The sections below include historical pilot and deployment notes; the latest concurrency configuration is described at the end. Public progress: https://djelleldifallah.com/softpower-audit/extraction-status/?country=KE .
 
 The worker accepts a country code, date range, source table and resource limits. Kenya is the first input, not a special case in the crawler. Source selection uses GDELT's estimated publisher country. It does not select articles merely because Kenya appears in their text.
 
@@ -230,3 +230,44 @@ host throttle, so throughput is not expected to scale linearly with threads.
 Memory-pressure backoff and automatic recovery to one worker remain active.
 This changes concurrency within the same 1 CPU / 1 GiB Cloud Run task, not the
 number of cloud tasks. The updated setting takes effect on checkpointed resume.
+
+### Higher throughput configuration, 2026-10-04
+
+The higher-throughput deployment uses one Cloud Run task with 4 vCPUs / 4 GiB,
+48 concurrent article pipelines and up to four articles per outlet. Large
+outlet backlogs start first. An article can wait for parsing or archive recovery
+while another article from its outlet proceeds. Ordinary HTTP requests remain
+serialized per host; browser document starts use the same host pacing (browser
+assets can load concurrently). The minimum request interval remains three
+seconds, or a longer robots-specified delay. Shared archive hosts have one
+shared throttle, not a separate allowance for every source outlet.
+
+`CRAWL_HEAVY_SLOTS=3` permits up to three isolated parsing/rendering processes;
+`CRAWL_BROWSER_SLOTS=1` limits those to one browser. Waiting browsers do not
+occupy parser slots. Host/robots/pacing queue waits are excluded from article
+recovery deadlines, so concurrency does not prematurely exhaust the toolbox.
+The existing process-group memory watchdog, checkpointing, bounded Cloud Run
+retries and automatic memory recovery remain active. No URL subset or extraction
+stage is removed to increase the completion count.
+
+Deploy the image with explicit resource parameters, then resume the existing
+run only after its preceding execution drains and releases the global lease:
+
+```sh
+python scripts/deploy_crawler.py --run-id IMAGE_TAG --deploy \
+  --cpu 4 --memory-gib 4 --heavy-slots 3 --browser-slots 1
+python scripts/deploy_crawler.py --run-id ke-full-20261003-192939 --execute
+```
+
+The run configuration uses `workers=48`, `per_outlet_workers=4`, and
+`max_total_attempts=300000`. The 40 GiB response and 23-hour scheduling limits
+remain; reaching an operational limit pauses remaining work without calling it
+complete. These limits are not a guaranteed billing cap. At published rates,
+compute is about $0.288/hour ($2.88 for ten hours), before free allowances and
+separate storage, operations, build and network charges.
+
+The requested ten-hour completion is a target, not a promise: at the start of
+this change about 81,400 URLs remained, including 19,625 at standardmedia.co.ke.
+At three seconds between requests that outlet alone needs about 16.4 hours for
+one request per URL, before robots checks, redirects, retries or archive work.
+Additional CPU or threads cannot remove the publisher/archive rate limits.

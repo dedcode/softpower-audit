@@ -11,8 +11,8 @@ class Pipeline(Fetcher):
   super().__init__(*args,**kwargs);self.live={};self.browser_lock=threading.Lock()
  def read(self,uri):return gzip.decompress(self.bucket.blob(uri.split('/'+self.bucket.name+'/',1)[1]).download_as_bytes(timeout=30))
  def fetch(self,item,run,country):
-  aid=key(item['url']);began=time.monotonic();queued_at_start=queue_wait_seconds();events=[];best=None;unresolved=False
-  def elapsed():return time.monotonic()-began-(queue_wait_seconds()-queued_at_start)
+  aid=key(item['url']);began=time.monotonic();queued_at_start=queue_wait_seconds();host_queued_at_start=self.host_queue_wait_seconds();events=[];best=None;unresolved=False
+  def elapsed():return time.monotonic()-began-(queue_wait_seconds()-queued_at_start)-(self.host_queue_wait_seconds()-host_queued_at_start)
   result={**item,'article_id':aid,'run_id':run,'country':country,'updated_at':now(),'status':'deferred','attempts':events,'response_bytes':0,'stored_bytes':0,'raw_uri':None,'text_uri':None,'http_status':None,'error':None,'reused':False}
   def stage(name,outcome,**kw):
    events.append({'stage':name,'status':outcome,'finished_at':now(),**kw});result['updated_at']=now()
@@ -114,9 +114,6 @@ class Pipeline(Fetcher):
    if document:
     parser,allowed,delay,_=self.policy(request_url)
     if not allowed or (parser and not parser.can_fetch(UA,request_url)):return False
-    with self.hostlock(parsed.hostname):
-     pause=max(self.delay,delay)-(time.monotonic()-self.last.get(parsed.hostname,0))
-     if pause>0:time.sleep(pause)
-     self.last[parsed.hostname]=time.monotonic()
+    with self.host_slot(parsed.hostname,delay):pass
    return True
-  return render_isolated(url,authorize)
+  return render_isolated(url,authorize,queue_wait=self.host_queue_observer())
