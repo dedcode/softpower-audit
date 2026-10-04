@@ -2,14 +2,17 @@
 import gzip,json,time,threading,hashlib
 from urllib.parse import urlsplit,urlencode
 from crawl import Fetcher,key,now,public_url,UA
-from extract import extract,VERSION
+from isolation import extract_isolated as extract,render_isolated,IsolationError,queue_wait_seconds
+VERSION="toolbox-2-isolated"
 
 class Pipeline(Fetcher):
+ parse_initial=False
  def __init__(self,*args,**kwargs):
   super().__init__(*args,**kwargs);self.live={};self.browser_lock=threading.Lock()
  def read(self,uri):return gzip.decompress(self.bucket.blob(uri.split('/'+self.bucket.name+'/',1)[1]).download_as_bytes(timeout=30))
  def fetch(self,item,run,country):
-  aid=key(item['url']);began=time.monotonic();events=[];best=None;unresolved=False
+  aid=key(item['url']);began=time.monotonic();queued_at_start=queue_wait_seconds();events=[];best=None;unresolved=False
+  def elapsed():return time.monotonic()-began-(queue_wait_seconds()-queued_at_start)
   result={**item,'article_id':aid,'run_id':run,'country':country,'updated_at':now(),'status':'deferred','attempts':events,'response_bytes':0,'stored_bytes':0,'raw_uri':None,'text_uri':None,'http_status':None,'error':None,'reused':False}
   def stage(name,outcome,**kw):
    events.append({'stage':name,'status':outcome,'finished_at':now(),**kw});result['updated_at']=now()
@@ -17,8 +20,11 @@ class Pipeline(Fetcher):
   def active(name):
    with self.lock:self.live[aid]={'outlet':item['outlet'],'stage':name}
   def consider(body,source,raw_uri,http_status=200,method='html'):
-   nonlocal best
-   analysis=extract(body,source);text=analysis.pop('text');stage('extract:'+method,analysis['quality'],url=source,**analysis)
+   nonlocal best,unresolved
+   try:analysis=extract(body,source)
+   except IsolationError as exc:
+    unresolved=True;stage('extract:'+method,'deferred',reason=str(exc));return {}
+   text=analysis.pop('text');stage('extract:'+method,analysis['quality'],url=source,**analysis)
    if http_status!=200:return analysis
    rank={'candidate':3,'partial':2,'missing':0}
    if text and (best is None or (rank[analysis['quality']],len(text))>(rank[best['quality']],len(best['text']))):best={**analysis,'text':text,'url':source,'raw_uri':raw_uri,'digest':hashlib.sha256(body).hexdigest(),'http_status':http_status}
@@ -34,13 +40,13 @@ class Pipeline(Fetcher):
   try:
    active('HTTP + extraction')
    first,analysis=retrieve(item['url'],'http')
-   unresolved=first['status'] in ('temporary_error','rate_limited')
+   unresolved|=first['status'] in ('temporary_error','rate_limited')
    # Canonical/OG URLs are discovered from the response, never manually supplied.
    if not best or best['quality']!='candidate':
     choices=list(dict.fromkeys((analysis or {}).get('discovered',[])))[:2]
     if not choices:stage('publisher_url_discovery','no_candidate',reason='No alternative same-host canonical/OG article URL in response')
     for url in choices:
-     if time.monotonic()-began>240:unresolved=True;stage('publisher_url_discovery','deferred',reason='Per-URL time budget');break
+     if elapsed()>240:unresolved=True;stage('publisher_url_discovery','deferred',reason='Per-URL time budget');break
      got,_=retrieve(url,'publisher_url_discovery');unresolved|=got['status'] in ('temporary_error','rate_limited')
      if best and best['quality']=='candidate':break
    else:stage('publisher_url_discovery','not_needed',reason='Usable candidate from initial HTML')
@@ -49,7 +55,7 @@ class Pipeline(Fetcher):
      stage('browser','not_applicable',reason='Access restriction, robots policy or paywall; browser is not a bypass')
     elif first.get('http_status')!=200:
      stage('browser','not_applicable',reason='No successful HTML document to render')
-    elif time.monotonic()-began>240:
+    elif elapsed()>240:
      unresolved=True;stage('browser','deferred',reason='Per-URL time budget')
     else:
      active('browser')
@@ -63,7 +69,7 @@ class Pipeline(Fetcher):
    if not best or best['quality']!='candidate':
     seen=set()
     for stamp in [str(item.get('first_observed','')).replace('-',''),'']:
-     if time.monotonic()-began>300:
+     if elapsed()>300:
       unresolved=True;stage('archive','deferred',reason='Per-URL time budget');break
      active('archive lookup')
      api='https://archive.org/wayback/available?'+urlencode({'url':item['url'],**({'timestamp':stamp} if stamp else {})})
@@ -86,7 +92,7 @@ class Pipeline(Fetcher):
      if not best or best['quality']!='candidate':
       for alternate in list(dict.fromkeys((arch_analysis or {}).get('discovered',[])))[:2]:
        if alternate in seen or urlsplit(alternate).hostname!='web.archive.org':continue
-       if time.monotonic()-began>300:unresolved=True;stage('archive_canonical','deferred',reason='Per-URL time budget');break
+       if elapsed()>300:unresolved=True;stage('archive_canonical','deferred',reason='Per-URL time budget');break
        seen.add(alternate);alt,_=retrieve(alternate,'archive_canonical');unresolved|=alt['status'] in ('temporary_error','rate_limited','robots_unavailable')
        if best and best['quality']=='candidate':break
      unresolved|=got['status'] in ('temporary_error','rate_limited','robots_unavailable')
@@ -103,35 +109,14 @@ class Pipeline(Fetcher):
   finally:
    with self.lock:self.live.pop(aid,None)
  def render(self,url):
-  """One browser at a time; no challenges/paywalls bypassed; bounded requests."""
-  from playwright.sync_api import sync_playwright
-  with self.browser_lock:
-   parser,allowed,delay,_=self.policy(url)
-   if not allowed or (parser and not parser.can_fetch(UA,url)):raise RuntimeError('Robots policy does not permit rendering')
-   with sync_playwright() as p:
-    browser=p.chromium.launch(headless=True,args=['--disable-dev-shm-usage'])
-    try:
-     context=browser.new_context(user_agent=UA,service_workers='block',accept_downloads=False)
-     page=context.new_page();count=[0]
-     def guard(route):
-      req=route.request;count[0]+=1
-      if count[0]>80 or req.resource_type in ('image','media','font','websocket'):return route.abort()
-      try:
-       parsed=public_url(req.url)
-       if req.resource_type=='document':
-        rp,ok,gap,_=self.policy(req.url)
-        if not ok or (rp and not rp.can_fetch(UA,req.url)):return route.abort()
-        with self.hostlock(parsed.hostname):
-         pause=max(self.delay,gap)-(time.monotonic()-self.last.get(parsed.hostname,0))
-         if pause>0:time.sleep(pause)
-         self.last[parsed.hostname]=time.monotonic()
-       route.continue_()
-      except Exception:route.abort()
-     page.route('**/*',guard);response=page.goto(url,wait_until='domcontentloaded',timeout=35000)
-     if response is None or response.status!=200:raise RuntimeError('Browser did not receive HTTP 200')
-     try:page.wait_for_load_state('networkidle',timeout=8000)
-     except Exception:pass
-     body=page.content().encode()
-     if len(body)>5*1024*1024:raise RuntimeError('Rendered document exceeds size limit')
-     return body,page.url
-    finally:browser.close()
+  def authorize(request_url,document):
+   parsed=public_url(request_url)
+   if document:
+    parser,allowed,delay,_=self.policy(request_url)
+    if not allowed or (parser and not parser.can_fetch(UA,request_url)):return False
+    with self.hostlock(parsed.hostname):
+     pause=max(self.delay,delay)-(time.monotonic()-self.last.get(parsed.hostname,0))
+     if pause>0:time.sleep(pause)
+     self.last[parsed.hostname]=time.monotonic()
+   return True
+  return render_isolated(url,authorize)

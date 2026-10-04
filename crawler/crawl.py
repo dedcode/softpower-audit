@@ -5,7 +5,6 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit,urljoin
 from urllib.robotparser import RobotFileParser
 import requests
-import trafilatura
 
 AGENT='ChinaNewsResearchBot'
 UA=AGENT+'/1.0 (+https://djelleldifallah.com/softpower-audit/extraction-status/)'
@@ -27,6 +26,7 @@ def retry_seconds(value,attempt):
         except Exception:return min(120,10*2**(attempt-1))
 
 class Fetcher:
+    parse_initial=True
     def __init__(self,bucket,run_id,delay=3,max_attempts=3):
         self.bucket=bucket;self.run_id=run_id;self.delay=delay;self.max_attempts=max_attempts
         self.lock=threading.Lock();self.hostlocks={};self.last={};self.robots={}
@@ -77,10 +77,10 @@ class Fetcher:
         cached=self.bucket.blob('latest/'+article_id+'.json')
         if cached.exists():
             previous=json.loads(cached.download_as_text())
-            if previous['status']=='saved':
+            if previous['status']=='saved' or (not self.parse_initial and previous['status']=='retrieved'):
                 for field in ('http_status','final_url','raw_uri','text_uri','content_sha256','robots_uri','fetched_at'):
                     result[field]=previous.get(field)
-                result.update(status='saved',reused=True);return result
+                result.update(status=previous['status'],reused=True);return result
         for attempt in range(1,self.max_attempts+1):
             event={'attempt':attempt,'started_at':now()};current=url
             try:
@@ -115,7 +115,10 @@ class Fetcher:
                         elif any(x in title for x in ('page not found','404 not found','page cannot be found')):result['status']='needs_inspection';result['error']='Possible soft 404'
                         elif urlsplit(current).path in ('','/') and urlsplit(url).path not in ('','/'):
                             result['status']='needs_inspection';result['error']='Redirected to homepage'
+                        elif not self.parse_initial:
+                            result['status']='retrieved'
                         else:
+                            import trafilatura
                             text=trafilatura.extract(body,url=current,include_comments=False) or ''
                             if text:
                                 data=gzip.compress(text.encode(),mtime=0)

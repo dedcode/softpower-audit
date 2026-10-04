@@ -24,7 +24,7 @@ class RetrievalTests(unittest.TestCase):
  def fetch(self):return self.f.fetch(self.item,'run','KE')
  def test_original_and_text_preserved(self):
   body=b'<html><title>Railway</title><article>Actual original</article></html>'
-  with patch.object(self.f,'one',return_value=(200,{'Content-Type':'text/html'},body,False)),patch.object(crawl.trafilatura,'extract',return_value='article '*100):r=self.fetch()
+  with patch.object(self.f,'one',return_value=(200,{'Content-Type':'text/html'},body,False)),patch('trafilatura.extract',return_value='article '*100):r=self.fetch()
   self.assertEqual(r['status'],'saved');self.assertEqual(gzip.decompress(self.bucket.data[r['raw_uri'].split('test-private/')[1]]),body)
   with patch.object(self.f,'one',side_effect=AssertionError('must not refetch')):reused=self.fetch()
   self.assertTrue(reused['reused']);self.assertEqual(reused['raw_uri'],r['raw_uri'])

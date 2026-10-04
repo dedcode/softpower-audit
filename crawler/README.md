@@ -144,3 +144,42 @@ The job memory limit was raised to 2 GiB, the existing run configuration was
 reduced to three workers, and execution `softpower-crawler-w5jjk` was launched
 with the same run ID and saved checkpoints. This provides memory headroom;
 it does not establish that peak memory is bounded for every publisher page.
+
+### Memory-efficient execution
+
+The controller now retains only compact latest-result metadata and counts.
+Full histories are persisted in the existing GCS/BQ formats, with checkpoint
+buffers bounded at 50 rows / 4 MiB and BQ buffers at 1,000 rows / 8 MiB (a
+single oversized record is sent alone). Checkpoints and the input manifest
+are streamed on restore, without constructing a full decoded copy. BQ replay
+is batched and retains the existing latest-row deduplication semantics.
+
+Pipeline HTTP retrieval no longer runs a redundant initial text parser.
+The unchanged structural extractor runs in a fresh process per document;
+Chromium rendering also runs in a disposable process group. Only one heavy
+parser/render task runs at a time, while HTTP retrieval can run concurrently.
+Browser document requests still use the parent's robots policy and shared
+host pacing. Slot wait time does not consume the article's recovery budget.
+Process-group cleanup stops browser descendants. Parser address space is
+limited to 384 MiB on Linux; a container pressure check aborts an expensive
+stage for normal retry handling. Existing browser/archive recovery and
+quality criteria remain in place; resource failures are not accepted as text.
+
+Private progress includes cgroup current/peak/limit bytes. At 75% container
+memory usage, the scheduler stops adding work and drains active work; if
+pressure persists it saves progress and pauses. Memory checks are sampled,
+not a guarantee against instantaneous spikes. The subprocess time limit can
+be extended by a synchronous parent robots request or host pacing.
+
+`VERIFY_MEMORY=1` runs a bounded verification job (saved pilot originals,
+100,000 compact result records, and a local JavaScript-only article fixture)
+without taking the crawler lease or publishing collection status. Its private
+report is stored under `verification/memory-v1/result.json` in the crawl bucket.
+
+Cloud verification `softpower-crawler-spsq8` passed at a 1 GiB ceiling:
+21 saved original pages had identical complete extraction outputs; three
+JavaScript-only browser recoveries passed and request denial was respected.
+Cgroup usage was 90.1 MiB initially, 126.1 MiB with 100,000 compact index
+entries, and peaked at 568.1 MiB across the test (including Chromium and
+filesystem cache). This is a bounded test measurement, not a claim that all
+publisher pages have the same peak. All 40 local tests passed.
