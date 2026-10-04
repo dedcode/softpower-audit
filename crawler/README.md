@@ -134,3 +134,13 @@ python scripts/deploy_crawler.py --run-id ke-full-20261003-192939 --execute
 
 Do not execute another worker while one is active. An operator can stop new
 scheduling by creating `runs/ke-full-20261003-192939/STOP` in the crawl bucket.
+
+### Memory incident and recovery, 2026-10-04
+
+Execution `softpower-crawler-wjfrb` was terminated by Cloud Run for exceeding
+its 1 GiB memory limit. Its final public snapshot was still marked running;
+the UI now changes stale running snapshots to “Worker not reporting”.
+The job memory limit was raised to 2 GiB, the existing run configuration was
+reduced to three workers, and execution `softpower-crawler-w5jjk` was launched
+with the same run ID and saved checkpoints. This provides memory headroom;
+it does not establish that peak memory is bounded for every publisher page.
