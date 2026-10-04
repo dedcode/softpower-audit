@@ -1,5 +1,5 @@
 """Cloud-only fault injection using a private test lease; no publisher requests."""
-import json,os,signal,time,uuid
+import json,os,time,uuid
 from google.cloud import storage
 from isolation import extract_isolated,IsolationError
 from memory_recovery import Recovery
@@ -17,7 +17,10 @@ def main():
     if attempt==0:
         checkpoint.upload_from_string(json.dumps({'completed':['saved-original-1','saved-original-2']}),content_type='application/json')
         print('Fault injection: persisted checkpoint and lease; killing test task.',flush=True)
-        os.kill(os.getpid(),signal.SIGKILL)
+        # PID 1 signal handling can ignore a self-sent SIGKILL. _exit skips
+        # all Python cleanup and deterministically fails the Cloud task.
+        os._exit(137)
+    assert attempt>0, 'Cloud Run did not retry the terminated test task'
     assert json.loads(checkpoint.download_as_text())['completed']==['saved-original-1','saved-original-2']
     # Force the stage watchdog to interrupt one real parser subprocess, then
     # verify another page can still be extracted in the same worker process.
@@ -36,5 +39,5 @@ def main():
     restored=Recovery(bucket,prefix,execution,1000)
     assert restored.state['memory_restarts']>=1 and restored.reduced_concurrency
     run.lease.delete(if_generation_match=run.lease.generation)
-    report={'passed':True,'execution':execution,'task_attempt':attempt,'abrupt_kill_retried':True,'checkpoint_preserved':True,'stale_test_lease_reclaimed':True,'stage_memory_interrupt_then_success':True,'restart_budget_persisted':True}
+    report={'passed':True,'execution':execution,'task_attempt':attempt,'abrupt_exit_retried':True,'checkpoint_preserved':True,'stale_test_lease_reclaimed':True,'stage_memory_interrupt_then_success':True,'restart_budget_persisted':True}
     bucket.blob('verification/recovery-v1/result.json').upload_from_string(json.dumps(report),content_type='application/json');print(json.dumps(report),flush=True)
