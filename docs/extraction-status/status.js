@@ -8,9 +8,9 @@ function render(d){
  const c=d.counts||{},success=c.saved||0,partial=c.partial||0,failed=(c.failed||0)+(c.exhausted||0),finished=success+partial+failed,remaining=Math.max(0,(d.total||0)-finished);
  const running=d.state==='running';
  const stale=running&&Date.now()-Date.parse(d.updated_at)>120000;
- $('state').textContent=remaining?(running?'Collection running':d.state==='queued'?'Collection starting':d.state==='failed'?'Worker stopped':'Collection paused'):(failed||partial?'Collection finished with incomplete results':'Collection finished');
- $('banner').className='status-banner '+(remaining?(running?'':d.state==='queued'?'waiting':'warning'):(failed||partial?'warning':'complete'));
- $('activity').textContent=running?`${fmt.format(d.downloading||0)} active` : '';
+ $('state').textContent=remaining?(stale?'Worker not reporting':running?'Collection running':d.state==='queued'?'Collection starting':d.state==='failed'?'Worker stopped':'Collection paused'):(failed||partial?'Collection finished with incomplete results':'Collection finished');
+ $('banner').className='status-banner '+(remaining?(stale?'warning':running?'':d.state==='queued'?'waiting':'warning'):(failed||partial?'warning':'complete'));
+ $('activity').textContent=running&&!stale?`${fmt.format(d.downloading||0)} active` : '';
  $('percentage').textContent=(d.total?100*finished/d.total:0).toFixed(1)+'%';
  $('website-count').textContent=fmt.format((d.domains||[]).length);
  $('updated').textContent='Updated '+new Date(d.updated_at).toLocaleString();$('progress').value=d.total?100*finished/d.total:0;
@@ -20,8 +20,8 @@ function render(d){
  $('websites').innerHTML=(d.domains||[]).map(w=>{
  const full=w.saved||0,part=w.partial||0,fail=(w.failed||0)+(w.exhausted||0),done=full+part+fail,total=done+(w.pending||0)+(w.downloading||0);
  const active=(d.active_stages||[]).filter(a=>a.outlet===w.outlet);
- const complete=done===total,type=complete?(fail||part?'warning':'complete'):w.downloading?'collecting':running?'waiting':'warning';
- const status=complete?(fail||part?'Finished · incomplete':'Finished'):w.downloading?'Collecting':running?'Waiting':'Paused';
+ const complete=done===total,type=complete?(fail||part?'warning':'complete'):stale?'warning':w.downloading?'collecting':running?'waiting':'warning';
+ const status=complete?(fail||part?'Finished · incomplete':'Finished'):stale?'No recent update':w.downloading?'Collecting':running?'Waiting':'Paused';
  return `<details data-outlet="${esc(w.outlet)}" ${expanded.has(w.outlet)?'open':''}><summary><strong class="website-name">${esc(w.outlet)}</strong><span class="website-status ${type}"><i class="dot" aria-hidden="true"></i>${status}</span><span class="website-progress"><span>${fmt.format(done)} / ${fmt.format(total)} URLs</span><progress aria-label="${esc(w.outlet)} collection progress" max="${total||1}" value="${done}"></progress></span></summary><div class="website-detail"><p><strong>${fmt.format(full)}</strong> full text · <strong>${fmt.format(part)}</strong> partial · <strong>${fmt.format(fail)}</strong> failed</p><p>${active.length?active.map(a=>esc(a.stage)).join(' · '):complete?'All URLs have a final result.':fmt.format(w.pending||0)+' URLs waiting.'}</p></div></details>`;
  }).join('');
  $('notice').textContent=d.error||(stale?'Progress has not updated recently. The worker may need attention.':remaining&&!running&&d.state!=='queued'?'Collection has stopped before all URLs were completed. Saved progress is retained; the worker needs to be resumed.':'');
