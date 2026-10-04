@@ -271,3 +271,22 @@ this change about 81,400 URLs remained, including 19,625 at standardmedia.co.ke.
 At three seconds between requests that outlet alone needs about 16.4 hours for
 one request per URL, before robots checks, redirects, retries or archive work.
 Additional CPU or threads cannot remove the publisher/archive rate limits.
+
+Verification: all 81 local tests passed. Cloud execution
+`softpower-crawler-hlqkh` passed the concurrent extraction/browser check with
+identical outputs for 21 preserved articles, three JavaScript renders, request
+denial enforcement and a 100,000-result compact index. Sampled peak memory was
+about 570 MiB in this bounded fixture (not a production-wide peak guarantee).
+The private report is `verification/parallel-20261004-r1/result.json`.
+The prior execution drained completely at 4,671 terminal URLs; execution
+`softpower-crawler-ktlxv` was launched with image `parallel-20261004-r1` to resume
+the remaining 81,322 URLs with the same input manifest and checkpoints.
+
+Live verification at 05:48 UTC confirmed 48 active article pipelines, 4,778
+terminal results (107 beyond the restart checkpoint), and matching public API
+counts. Peak container memory at that point was about 909 MiB. An initial
+111-second observation saw 88 completions (about 2,849/hour); this short,
+outlet-dependent sample is not a reliable whole-run ETA and is below the
+roughly 8,100/hour required for ten hours. Forty of the 48 active pipelines
+were in archive lookup/replay stages, indicating external recovery throttles
+are now the principal constraint rather than available parser slots.
