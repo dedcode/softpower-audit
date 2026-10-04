@@ -220,3 +220,13 @@ because the container's PID 1 did not terminate; it is superseded by this
 `os._exit(137)` test with an explicit task-attempt assertion. All 51 local tests
 pass. The production run was checkpointed at 4,116 URLs before switching to
 image `memory-recovery-20261004-r3` at the existing 1 GiB ceiling.
+
+### Network concurrency increase
+
+The Kenya run configuration now permits six concurrent article pipelines
+(up from three). The single parser/browser slot, per-host serial requests and
+minimum three-second spacing remain unchanged. Archive calls share the archive
+host throttle, so throughput is not expected to scale linearly with threads.
+Memory-pressure backoff and automatic recovery to one worker remain active.
+This changes concurrency within the same 1 CPU / 1 GiB Cloud Run task, not the
+number of cloud tasks. The updated setting takes effect on checkpointed resume.
