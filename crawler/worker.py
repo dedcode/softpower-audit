@@ -96,7 +96,7 @@ class Run:
         self.put(self.prefix+'progress.json',summary);self.put('progress/'+self.country+'.json',summary)
         return summary
     def run(self):
-        self.lease_update(initial=True);state='running';total=0
+        self.lease_update(initial=True);state='running';total=self.config.get('input_count',0)
         try:
             if self.recovery is None:
                 self.recovery=Recovery(self.bucket,self.prefix,self.execution,self.config['max_runtime_seconds'])
@@ -106,6 +106,8 @@ class Run:
             try:
                 previous=json.loads(self.bucket.blob(self.prefix+'progress.json').download_as_text())
                 previous.update(state='recovering_memory' if self.recovery.reduced_concurrency else 'starting',execution=self.execution,updated_at=now(),downloading=0,active_stages=[],error=None)
+                for domain in previous.get('domains',[]):
+                    domain['pending']=domain.get('pending',0)+domain.get('downloading',0);domain['downloading']=0
                 self.put('progress/'+self.country+'.json',previous)
             except NotFound:pass
             self.restore();total=self.load_inputs()

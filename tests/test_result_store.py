@@ -178,6 +178,18 @@ class ResultStoreTests(unittest.TestCase):
         self.assertEqual(len(run.done), 0)
         self.assertEqual(list(run.queues['news.ke']), rows)
 
+    def test_restore_failure_keeps_real_total_not_false_completion(self):
+        run = self.new_run({})
+        run.recovery = Mock()
+        run.country = 'KE';run.run_id = 'test';run.execution = 'test-execution'
+        run.started = time.monotonic();run.active = {};run.paused = {}
+        run.fetcher = Mock();run.lease = Mock()
+        run.config.update(input_count=85993, max_runtime_seconds=1000)
+        run.restore = Mock(side_effect=RuntimeError('storage temporarily unavailable'))
+        run.progress = Mock()
+        with self.assertRaises(RuntimeError):run.run()
+        self.assertEqual(run.progress.call_args.args[:2], ('failed', 85993))
+
     def test_input_manifest_only_queues_unfinished_urls(self):
         rows = [{'url': 'https://news.ke/' + str(i), 'outlet': 'news.ke'} for i in range(5)]
         run = self.new_run({'runs/test/inputs.json.gz': gzip.compress(json.dumps(rows).encode())})
