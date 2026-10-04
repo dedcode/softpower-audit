@@ -211,3 +211,12 @@ and checkpoint. It deliberately kills attempt zero, verifies Cloud Run retries
 it, reclaims its own old lease, and interrupts one parser before successfully
 extracting another page. It does not take the collection's global lease or
 fetch publisher pages.
+
+Recovery verification `softpower-crawler-8qqmz` completed successfully after
+one Cloud Run retry: task attempt 1 resumed the private checkpoint and reclaimed
+the terminated attempt's test lease. A forced parser memory interruption was
+followed by a successful extraction. The earlier SIGKILL-self test was invalid
+because the container's PID 1 did not terminate; it is superseded by this
+`os._exit(137)` test with an explicit task-attempt assertion. All 51 local tests
+pass. The production run was checkpointed at 4,116 URLs before switching to
+image `memory-recovery-20261004-r3` at the existing 1 GiB ceiling.
