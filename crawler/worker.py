@@ -1,5 +1,5 @@
 """A resumable job: parallel across outlets, serial within each outlet."""
-import gzip,io,json,os,signal,time,uuid
+import gzip,io,json,os,signal,sys,time,uuid
 from collections import Counter,defaultdict,deque
 from concurrent.futures import ThreadPoolExecutor,wait,FIRST_COMPLETED
 from datetime import datetime,timezone,timedelta
@@ -7,6 +7,7 @@ from google.cloud import storage,bigquery
 from google.api_core.exceptions import NotFound
 from crawl import key,now
 from retrying import RetryingPipeline
+from memory_recovery import Recovery,reclaim_memory,retry_owns_lease
 from result_store import ResultIndex,JsonlBatch,encode_jsonl,iter_input_rows,memory_usage
 
 STOP=False
@@ -22,19 +23,20 @@ class Run:
         self.run_id=os.environ['RUN_ID'];self.prefix='runs/'+self.run_id+'/'
         self.config=json.loads(self.bucket.blob(self.prefix+'config.json').download_as_text())
         self.country=self.config['country'];self.started=time.monotonic();self.execution=os.environ.get('CLOUD_RUN_EXECUTION','local')
+        self.task_attempt=int(os.environ.get('CLOUD_RUN_TASK_ATTEMPT','0'));self.task_index=os.environ.get('CLOUD_RUN_TASK_INDEX','0');self.recovery=None
         self.lease=self.bucket.blob('control/worker-lease.json');self.owner=uuid.uuid4().hex
         self.done=ResultIndex();self.checkpoint=JsonlBatch(50,4*1024*1024);self.to_bq=JsonlBatch(1000,8*1024*1024);self.paused={};self.active={};self.queues=defaultdict(deque)
         self.last_checkpoint=time.monotonic();self.last_bq=time.monotonic()
         self.bq=bigquery.Client(project=self.config['project']);self.fetcher=RetryingPipeline(self.bucket,self.run_id,self.config['delay_seconds'],self.config['max_attempts'])
     def put(self,path,value):self.bucket.blob(path).upload_from_string(json.dumps(value,separators=(',',':')),content_type='application/json',timeout=60)
     def lease_update(self,initial=False):
-        payload=json.dumps({'owner':self.owner,'run_id':self.run_id,'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat()})
+        payload=json.dumps({'owner':self.owner,'run_id':self.run_id,'execution':self.execution,'task_index':self.task_index,'task_attempt':self.task_attempt,'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat()})
         generation=0
         if initial:
             try:
                 self.lease.reload();generation=self.lease.generation
                 previous=json.loads(self.lease.download_as_text(if_generation_match=generation))
-                if datetime.fromisoformat(previous['expires_at'])>datetime.now(timezone.utc):raise RuntimeError('Another crawler holds the global worker lease')
+                if datetime.fromisoformat(previous['expires_at'])>datetime.now(timezone.utc) and not retry_owns_lease(previous,self.execution,self.task_index,self.task_attempt):raise RuntimeError('Another crawler holds the global worker lease')
                 generation=self.lease.generation
             except NotFound:pass
         else:generation=self.lease.generation
@@ -96,6 +98,16 @@ class Run:
     def run(self):
         self.lease_update(initial=True);state='running';total=0
         try:
+            if self.recovery is None:
+                self.recovery=Recovery(self.bucket,self.prefix,self.execution,self.config['max_runtime_seconds'])
+                self.started=time.monotonic()-self.recovery.elapsed
+                if self.recovery.reduced_concurrency:self.config['workers']=1
+            # Publish restart state while restoring; an interrupted attempt is not done.
+            try:
+                previous=json.loads(self.bucket.blob(self.prefix+'progress.json').download_as_text())
+                previous.update(state='recovering_memory' if self.recovery.reduced_concurrency else 'starting',execution=self.execution,updated_at=now(),downloading=0,active_stages=[],error=None)
+                self.put('progress/'+self.country+'.json',previous)
+            except NotFound:pass
             self.restore();total=self.load_inputs()
             last_progress=0;block_streak=Counter()
             with ThreadPoolExecutor(max_workers=self.config['workers']) as pool:
@@ -112,7 +124,11 @@ class Run:
                             if not self.queues[domain] or domain in self.active.values() or domain in self.paused:continue
                             item=self.queues[domain].popleft();future=pool.submit(self.fetcher.fetch,item,self.run_id,self.country);self.active[future]=domain
                     if not self.active:
-                        if memory_pressure and any(self.queues.values()) and state=='running':state='paused_memory'
+                        if memory_pressure and any(self.queues.values()) and state=='running':
+                            self.flush(final=True);reclaim_memory()
+                            memory=memory_usage()
+                            if not memory.get('limit_bytes') or memory.get('current_bytes',0)<memory['limit_bytes']*.75:continue
+                            state='recovering_memory' if self.recovery.reserve_restart() else 'recovery_failed'
                         if any(self.queues.values()) and state=='running':state='completed_with_deferred'
                         elif state=='running':state='completed'
                         break
@@ -124,7 +140,7 @@ class Run:
                             if block_streak[domain]>=2 or r['status'] in ('rate_limited','robots_unavailable'):self.paused[domain]=r['status']
                         else:block_streak[domain]=0
                 if state=='running':state='completed'
-            self.flush(final=True);summary=self.progress(state,total,'Memory headroom is low; saved progress before pausing.' if state=='paused_memory' else None)
+            self.flush(final=True);summary=self.progress(state,total,'Releasing memory and restarting automatically with one download at a time.' if state=='recovering_memory' else 'Automatic memory recovery limit reached; saved progress requires attention.' if state=='recovery_failed' else None)
             self.bq.load_table_from_json([{'run_id':self.run_id,'country':self.country,'updated_at':now(),'state':state,'config_json':json.dumps(self.config),'summary_json':json.dumps(summary)}],self.config['dataset']+'.crawl_run_events').result(timeout=90)
         except Exception as e:
             try:self.flush(final=True);self.progress('failed',total,type(e).__name__+': '+str(e)[:600])
@@ -134,8 +150,16 @@ class Run:
             try:self.lease.delete(if_generation_match=self.lease.generation)
             except Exception:pass
         print(json.dumps({'run_id':self.run_id,'state':state,'processed':len(self.done)}),flush=True)
+        return state
 if __name__=='__main__':
-    if os.environ.get('VERIFY_MEMORY')=='1':
+    if os.environ.get('VERIFY_RECOVERY')=='1':
+        import verify_recovery
+        verify_recovery.main()
+    elif os.environ.get('VERIFY_MEMORY')=='1':
         import verify_memory
         verify_memory.main()
-    else:Run().run()
+    else:
+        state=Run().run()
+        if state=='recovering_memory':
+            time.sleep(10)
+            os.execv(sys.executable,[sys.executable,__file__])

@@ -17,5 +17,5 @@ with tempfile.TemporaryDirectory(prefix='crawler-deploy-') as tmp:
   build=Path(tmp)/'build.json'
   build.write_text(json.dumps({'steps':[{'name':'gcr.io/cloud-builders/docker','args':['build','-t',image,'.']}],'images':[image],'options':{'logging':'CLOUD_LOGGING_ONLY'}}))
   command(['builds','submit',str(ROOT/'crawler'),'--config='+str(build),'--region=us-central1','--service-account=projects/citygraph/serviceAccounts/softpower-audit-builder@citygraph.iam.gserviceaccount.com','--quiet'])
-  command(['run','jobs','deploy','softpower-crawler','--image='+image,'--region=us-central1','--service-account=softpower-crawler@citygraph.iam.gserviceaccount.com','--tasks=1','--parallelism=1','--max-retries=0','--task-timeout=86400','--cpu=1','--memory=1Gi','--set-env-vars=CRAWL_BUCKET=citygraph-softpower-crawl,RUN_ID='+args.run_id,'--quiet'])
+  command(['run','jobs','deploy','softpower-crawler','--image='+image,'--region=us-central1','--service-account=softpower-crawler@citygraph.iam.gserviceaccount.com','--tasks=1','--parallelism=1','--max-retries=3','--task-timeout=86400','--cpu=1','--memory=1Gi','--set-env-vars=CRAWL_BUCKET=citygraph-softpower-crawl,RUN_ID='+args.run_id,'--quiet'])
  if args.execute:command(['run','jobs','execute','softpower-crawler','--region=us-central1','--update-env-vars=RUN_ID='+args.run_id,'--async','--format=json'])

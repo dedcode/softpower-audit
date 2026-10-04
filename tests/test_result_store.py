@@ -29,6 +29,11 @@ class Bucket:
         data = self.data
 
         class Blob:
+            def download_as_text(self, **kwargs):
+                from google.api_core.exceptions import NotFound
+                if name not in data:raise NotFound(name)
+                return data[name]
+
             def open(self, mode, **kwargs):
                 return io.BytesIO(data[name])
 
@@ -153,20 +158,23 @@ class ResultStoreTests(unittest.TestCase):
     def test_memory_pressure_pauses_without_marking_pending_urls_done(self):
         rows = [{'url': 'https://news.ke/a', 'outlet': 'news.ke'}]
         run = self.new_run({'runs/test/inputs.json.gz': gzip.compress(json.dumps(rows).encode())})
+        run.recovery = Mock()
+        run.recovery.reserve_restart.return_value = True
         run.country = 'KE'
         run.run_id = 'test'
         run.started = time.monotonic()
         run.active = {}
         run.paused = {}
         run.fetcher = Mock()
+        run.execution='test-execution'
         run.lease = Mock()
         run.config.update(workers=1, max_runtime_seconds=1000,
                           max_response_bytes=100000, max_total_attempts=10000)
         run.progress = Mock(return_value={'response_bytes': 0, 'attempts': 0})
-        with patch('worker.memory_usage', return_value={'current_bytes': 90, 'limit_bytes': 100}), patch('builtins.print'):
+        with patch('worker.reclaim_memory'), patch('worker.memory_usage', return_value={'current_bytes': 90, 'limit_bytes': 100}), patch('builtins.print'):
             run.run()
         run.fetcher.fetch.assert_not_called()
-        self.assertEqual(run.progress.call_args.args[0], 'paused_memory')
+        self.assertEqual(run.progress.call_args.args[0], 'recovering_memory')
         self.assertEqual(len(run.done), 0)
         self.assertEqual(list(run.queues['news.ke']), rows)
 

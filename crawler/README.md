@@ -183,3 +183,31 @@ Cgroup usage was 90.1 MiB initially, 126.1 MiB with 100,000 compact index
 entries, and peaked at 568.1 MiB across the test (including Chromium and
 filesystem cache). This is a bounded test measurement, not a claim that all
 publisher pages have the same peak. All 40 local tests passed.
+
+### Automatic memory recovery
+
+A dedicated watchdog checks the container memory every 100 ms, including
+while browser request approval waits for robots or host pacing. At 85% of
+its memory limit it kills only the isolated parser/browser process group;
+that stage enters the existing bounded retry path, and later articles can
+continue. Crashes and broken process communication are retryable too.
+
+At 75% memory the controller drains active URLs, persists buffers, runs GC
+and requests allocator release. If pressure remains, it publishes
+`recovering_memory`, releases its lease and replaces itself with a fresh
+Python interpreter after ten seconds. The replacement uses one worker and
+restores checkpoints. Three such recycles are allowed per Cloud execution;
+the counter and start time are persisted, so recycling cannot reset the
+runtime limit. Persistent failures surface as `recovery_failed` for attention.
+
+Cloud Run also has three task retries for abrupt process/container failures.
+A higher task attempt can reclaim the preceding attempt's lease only when
+the execution and task index match. Other executions cannot take a live
+lease. The same execution start time applies to Cloud retries. These are
+bounded recovery mechanisms, not a promise to survive every possible fault.
+
+`VERIFY_RECOVERY=1` runs a fault-injection execution with a private test lease
+and checkpoint. It deliberately kills attempt zero, verifies Cloud Run retries
+it, reclaims its own old lease, and interrupts one parser before successfully
+extracting another page. It does not take the collection's global lease or
+fetch publisher pages.
