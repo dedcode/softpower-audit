@@ -509,3 +509,15 @@ initial joins, a no-write fresh-lease round, and two forced near-expiry rounds.
 Each required renewal had exactly one successful writer; concurrent conflicts
 were handled successfully. The slowest operation took 2.489 seconds. Proof:
 `runs/verify-distributed-ten-refresh-20261005-144526-caec5997/verification.json`.
+
+Corrected production execution `softpower-crawler-wkzlt` runs image
+`distributed-20261005-r4`, launched by workflow
+`120dac3d-db9b-4193-bc11-46571625e1bb`. The rollover preserved 19,310 completed
+results. Verification on 2026-10-05 around 15:01 UTC confirmed all ten live
+workers reporting both configured and effective capacity of 48 each, total
+configured/effective capacity 480, and over 60 seconds of stable capacity.
+The sample contained 431 distinct active URL claims and no duplicate assignments.
+The authoritative count had advanced to 19,359, including 47 additional saved
+full texts. A new result's original response and extracted text were verified
+in GCS; the public status API also reports ten active instances and 480 slots.
+Proof: `runs/ke-full-20261003-192939/distributed/scale-to-10-r4/verification.json`.
