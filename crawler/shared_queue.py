@@ -6,6 +6,7 @@ HTTP requests if a lease cannot be renewed. A fencing token prevents a stale
 process from committing a result after its claim has been reassigned.
 """
 import hashlib
+import math
 import os
 import random
 import time
@@ -21,7 +22,8 @@ SHARDS = 32
 MAX_CLAIMS = 48
 WORKER_HEARTBEAT_SECONDS = 90
 ACTIVE_RUN_STATES = frozenset(('ready', 'running', 'continuing'))
-TERMINAL_EXCLUSIONS = frozenset(('deferred', 'retrying'))
+TERMINAL_EXCLUSIONS = frozenset(('deferred', 'retrying', 'queued'))
+PHASE_DUE_FIELDS = {'publisher': 'due_at', 'archive': 'archive_due_at'}
 METRICS = ('attempts', 'retries', 'response_bytes', 'stored_bytes')
 
 
@@ -30,7 +32,7 @@ def article_key(url):
 
 
 def _empty_stats():
-    return {'total': 0, 'processed': 0, 'counts': {}, 'domains': {},
+    return {'total': 0, 'processed': 0, 'counts': {}, 'domains': {}, 'archive_remaining': 0,
             **{field: 0 for field in METRICS}}
 
 
@@ -52,8 +54,29 @@ def _increment_stats(stats, outlet, status=None, metrics=None, add_total=False):
         stats['counts'][status] = stats['counts'].get(status, 0) + 1
         domain['processed'] += 1
         domain['counts'][status] = domain['counts'].get(status, 0) + 1
+    if metrics is not None:
         for field in METRICS:
-            stats[field] += metrics.get(field, 0)
+            stats[field] = stats.get(field, 0) + metrics.get(field, 0)
+
+
+def _due_field(phase):
+    if phase not in PHASE_DUE_FIELDS:
+        raise ValueError('Queue phase must be publisher or archive')
+    return PHASE_DUE_FIELDS[phase]
+
+
+def _metric_delta(row, metrics):
+    accounted = row.get('accounted_metrics', {})
+    delta = {field: metrics[field] - accounted.get(field, 0) for field in METRICS}
+    if any(value < 0 for value in delta.values()):
+        raise ValueError('Cumulative article metrics cannot decrease across phases')
+    return delta
+
+
+def _validate_evidence(uri):
+    parsed = urlsplit(uri or '')
+    if parsed.scheme != 'gs' or not parsed.netloc or not parsed.path.strip('/'):
+        raise ValueError('A durable gs:// evidence URI is required')
 
 
 @dataclass
@@ -62,6 +85,8 @@ class Claim:
     token: str
     item: dict
     lease_until: float
+    phase: str = 'publisher'
+    checkpoint_uri: str | None = None
 
     @property
     def expires_at(self):
@@ -83,7 +108,7 @@ class SharedQueue:
         self.articles = self.run_ref.collection('articles')
         self.stats = self.run_ref.collection('stats')
         self.workers = self.run_ref.collection('workers')
-        self._cursor = None
+        self._cursors = {phase: None for phase in PHASE_DUE_FIELDS}
         self._random = random.Random(owner)
 
     def _transaction(self, operation):
@@ -202,13 +227,14 @@ class SharedQueue:
                      option=self.client.write_option(last_update_time=snapshot.update_time))
         batch.commit(timeout=60)
 
-    def claim(self, limit=MAX_CLAIMS, per_outlet=4, excluded_outlets=(), inflight=None):
+    def claim(self, limit=MAX_CLAIMS, per_outlet=4, excluded_outlets=(), inflight=None, phase='publisher'):
         """Claim up to ``limit`` URLs using a bounded indexed due_at query.
 
         ``per_outlet`` is per instance; shared HTTP pacing is enforced separately.
         Pagination rotates locally so a few currently saturated outlets cannot
         indefinitely hide other work. No corpus-wide scan occurs on refill.
         """
+        due_field = _due_field(phase)
         if not 0 <= limit <= MAX_CLAIMS or per_outlet < 1:
             raise ValueError('Invalid claim or per-outlet limit')
         if not limit:
@@ -223,17 +249,17 @@ class SharedQueue:
         wrapped = False
         page_size = max(48, min(192, limit * 4))
         for _ in range(2):
-            query = self.articles.where(filter=firestore.FieldFilter('due_at', '<=', now)).order_by('due_at').limit(page_size)
-            if self._cursor is not None:
-                query = query.start_after(self._cursor)
+            query = self.articles.where(filter=firestore.FieldFilter(due_field, '<=', now)).order_by(due_field).limit(page_size)
+            if self._cursors[phase] is not None:
+                query = query.start_after(self._cursors[phase])
             candidates = list(query.stream(timeout=30))
             if not candidates:
-                if self._cursor is None or wrapped:
+                if self._cursors[phase] is None or wrapped:
                     break
-                self._cursor = None
+                self._cursors[phase] = None
                 wrapped = True
                 continue
-            self._cursor = candidates[-1]
+            self._cursors[phase] = candidates[-1]
             self._random.shuffle(candidates)
             for candidate in candidates:
                 doc = candidate.to_dict()
@@ -250,14 +276,15 @@ class SharedQueue:
                         return None
                     row = live.to_dict()
                     admitted_at = self.clock()
-                    if row.get('state') == 'done' or row.get('due_at', float('inf')) > admitted_at:
+                    if (row.get('state') == 'done' or row.get('phase', 'publisher') != phase
+                            or row.get(due_field, float('inf')) > admitted_at):
                         return None
                     if row.get('state') not in ('ready', 'leased'):
                         raise RuntimeError('Unexpected article queue state')
                     expires = admitted_at + self.lease_seconds
                     transaction.update(candidate.reference, {'state': 'leased', 'owner': self.owner,
-                        'claim_token': token, 'due_at': expires, 'updated_at': admitted_at})
-                    return Claim(row['article_id'], token, row['item'], expires)
+                        'claim_token': token, due_field: expires, 'phase': phase, 'updated_at': admitted_at})
+                    return Claim(row['article_id'], token, row['item'], expires, phase, row.get('checkpoint_uri'))
                 claimed = self._transaction(reserve)
                 if claimed is not None:
                     claims.append(claimed)
@@ -281,16 +308,17 @@ class SharedQueue:
             for claim, reference in zip(claims, refs):
                 snapshot = documents.get(claim.article_id)
                 row = snapshot.to_dict() if snapshot and snapshot.exists else {}
+                due_field = _due_field(claim.phase)
                 if (row.get('state') != 'leased' or row.get('owner') != self.owner
-                        or row.get('claim_token') != claim.token or row.get('due_at', 0) <= now):
+                        or row.get('phase', 'publisher') != claim.phase
+                        or row.get('claim_token') != claim.token or row.get(due_field, 0) <= now):
                     lost.add(claim.article_id)
                     continue
-                transaction.update(reference, {'due_at': expires, 'updated_at': now})
+                transaction.update(reference, {due_field: expires, 'updated_at': now})
             return lost, expires
         lost, expires = self._transaction(renew)
         for claim in claims:
-            if claim.article_id not in lost:
-                claim.lease_until = expires
+            claim.lease_until = 0 if claim.article_id in lost else expires
         self.heartbeat_worker([claim for claim in claims if claim.article_id not in lost], worker_state)
         return lost
 
@@ -305,7 +333,7 @@ class SharedQueue:
             task_attempt=os.environ.get('CLOUD_RUN_TASK_ATTEMPT', '0'),
             task_count=os.environ.get('CLOUD_RUN_TASK_COUNT', '1'),
             active=[{'article_id': claim.article_id, 'outlet': claim.item['outlet'],
-                     'lease_until': claim.lease_until} for claim in claims])
+                     'lease_until': claim.lease_until, 'phase': claim.phase} for claim in claims])
         details.setdefault('state', 'running')
         self.workers.document(self.owner).set(details, timeout=30)
 
@@ -319,9 +347,8 @@ class SharedQueue:
         Returns False if ownership expired or moved to another process. Repeating
         the same completion is successful without incrementing counters again.
         """
-        parsed = urlsplit(result_uri or '')
-        if parsed.scheme != 'gs' or not parsed.netloc or not parsed.path.strip('/'):
-            raise ValueError('Completion requires the durable gs:// result evidence URI')
+        _validate_evidence(result_uri)
+        due_field = _due_field(claim.phase)
         if result.get('article_id') != claim.article_id or result.get('outlet') != claim.item['outlet']:
             raise ValueError('Result does not belong to the claimed article')
         status = result.get('status')
@@ -336,33 +363,94 @@ class SharedQueue:
             snapshot = reference.get(transaction=transaction)
             row = snapshot.to_dict() if snapshot.exists else {}
             if row.get('state') == 'done':
-                return row.get('owner') == self.owner and row.get('claim_token') == claim.token
+                return (row.get('owner') == self.owner and row.get('claim_token') == claim.token
+                        and row.get('phase', 'publisher') == claim.phase and row.get('result_uri') == result_uri)
             if (row.get('state') != 'leased' or row.get('owner') != self.owner
-                    or row.get('claim_token') != claim.token or row.get('due_at', 0) <= self.clock()):
+                    or row.get('phase', 'publisher') != claim.phase
+                    or row.get('claim_token') != claim.token or row.get(due_field, 0) <= self.clock()):
                 return False
             stats_snapshot = stats_ref.get(transaction=transaction)
             if not stats_snapshot.exists:
                 raise RuntimeError('Queue counter shard is missing; refusing unaccounted completion')
             stats = stats_snapshot.to_dict()
-            _increment_stats(stats, row['outlet'], status, metrics)
+            _increment_stats(stats, row['outlet'], status, _metric_delta(row, metrics))
+            if claim.phase == 'archive':
+                if stats.get('archive_remaining', 0) < 1:
+                    raise RuntimeError('Archive counter is inconsistent')
+                stats['archive_remaining'] -= 1
             row.update(state='done', status=status, result_uri=result_uri, metrics=metrics, needs_export=True,
                        result_updated_at=result.get('updated_at'), updated_at=self.clock())
             row.pop('due_at', None)
+            row.pop('archive_due_at', None)
             transaction.set(reference, row)
             transaction.set(stats_ref, stats)
             return True
         return self._transaction(finish)
 
+    def handoff(self, claim, checkpoint_uri, *, next_phase, retry_at, result):
+        """Durably queue another phase without claiming an article is finished.
+
+        The caller uploads an immutable cumulative-result checkpoint first. The
+        transition and newly incurred metrics commit together; retries of the
+        same handoff do not account the same attempts or bytes twice.
+        """
+        _validate_evidence(checkpoint_uri)
+        due_field = _due_field(claim.phase)
+        next_due = _due_field(next_phase)
+        retry_at = float(retry_at)
+        if not math.isfinite(retry_at) or retry_at < 0:
+            raise ValueError('retry_at must be a finite nonnegative epoch time')
+        if result.get('article_id') != claim.article_id or result.get('outlet') != claim.item['outlet']:
+            raise ValueError('Checkpoint result does not belong to the claimed article')
+        metrics = _metrics(result)
+        if any(value < 0 for value in metrics.values()):
+            raise ValueError('Article metrics must be nonnegative')
+        reference = self.articles.document(claim.article_id)
+        stats_ref = self.stats.document(f'{int(claim.article_id[:8], 16) % SHARDS:02d}')
+        handoff_identity = {'owner': self.owner, 'token': claim.token,
+                            'checkpoint_uri': checkpoint_uri, 'next_phase': next_phase,
+                            'retry_at': retry_at}
+        def transition(transaction):
+            snapshot = reference.get(transaction=transaction)
+            row = snapshot.to_dict() if snapshot.exists else {}
+            if row.get('last_handoff') == handoff_identity:
+                return True
+            if (row.get('state') != 'leased' or row.get('owner') != self.owner
+                    or row.get('phase', 'publisher') != claim.phase
+                    or row.get('claim_token') != claim.token or row.get(due_field, 0) <= self.clock()):
+                return False
+            stats_snapshot = stats_ref.get(transaction=transaction)
+            if not stats_snapshot.exists:
+                raise RuntimeError('Queue counter shard is missing; refusing unaccounted handoff')
+            stats = stats_snapshot.to_dict()
+            _increment_stats(stats, row['outlet'], metrics=_metric_delta(row, metrics))
+            archive_remaining = stats.get('archive_remaining', 0) + int(next_phase == 'archive') - int(claim.phase == 'archive')
+            if archive_remaining < 0:
+                raise RuntimeError('Archive counter is inconsistent')
+            stats['archive_remaining'] = archive_remaining
+            row.update(state='ready', phase=next_phase, checkpoint_uri=checkpoint_uri,
+                       accounted_metrics=metrics, last_handoff=handoff_identity,
+                       status='queued', needs_export=False, updated_at=self.clock())
+            for field in ('due_at', 'archive_due_at', 'owner', 'claim_token'):
+                row.pop(field, None)
+            row[next_due] = retry_at
+            transaction.set(reference, row)
+            transaction.set(stats_ref, stats)
+            return True
+        return self._transaction(transition)
+
     def release(self, claim):
         """Requeue only this claim; never release another worker's replacement."""
         reference = self.articles.document(claim.article_id)
+        due_field = _due_field(claim.phase)
         def release_owned(transaction):
             snapshot = reference.get(transaction=transaction)
             row = snapshot.to_dict() if snapshot.exists else {}
             if (row.get('state') != 'leased' or row.get('owner') != self.owner
-                    or row.get('claim_token') != claim.token):
+                    or row.get('phase', 'publisher') != claim.phase or row.get('claim_token') != claim.token):
                 return False
-            row.update(state='ready', due_at=0.0, updated_at=self.clock())
+            row.update(state='ready', updated_at=self.clock())
+            row[due_field] = 0.0
             row.pop('owner', None)
             row.pop('claim_token', None)
             transaction.set(reference, row)
@@ -374,8 +462,14 @@ class SharedQueue:
         if not 1 <= limit <= 1000:
             raise ValueError('Export batch must contain 1 to 1000 records')
         query = self.articles.where(filter=firestore.FieldFilter('needs_export', '==', True)).limit(limit)
-        return [{'article_id': row.id, 'claim_token': row.to_dict().get('claim_token'),
-                 'result_uri': row.to_dict()['result_uri']} for row in query.stream(timeout=30)]
+        records = []
+        for snapshot in query.stream(timeout=30):
+            row = snapshot.to_dict()
+            if row.get('state') != 'done' or not row.get('status') or row['status'] in TERMINAL_EXCLUSIONS:
+                raise RuntimeError('Nonterminal article found in the result export outbox')
+            records.append({'article_id': snapshot.id, 'claim_token': row.get('claim_token'),
+                            'result_uri': row['result_uri']})
+        return records
 
     def mark_exported(self, records):
         """Acknowledge only matching immutable results after a successful BQ load.
@@ -395,7 +489,8 @@ class SharedQueue:
                 for record, reference in zip(chunk, references):
                     snapshot = snapshots.get(record['article_id'])
                     row = snapshot.to_dict() if snapshot and snapshot.exists else {}
-                    if (row.get('state') != 'done' or row.get('result_uri') != record['result_uri']
+                    if (row.get('state') != 'done' or row.get('status') in TERMINAL_EXCLUSIONS
+                            or row.get('result_uri') != record['result_uri']
                             or row.get('claim_token') != record.get('claim_token')):
                         continue
                     if row.get('needs_export'):
@@ -433,7 +528,7 @@ class SharedQueue:
             raise RuntimeError('Shared queue counters are incomplete')
         for snapshot in snapshots:
             shard = snapshot.to_dict()
-            for field in ('total', 'processed') + METRICS:
+            for field in ('total', 'processed', 'archive_remaining') + METRICS:
                 totals[field] += shard.get(field, 0)
             counts.update(shard.get('counts', {}))
             for outlet, values in shard.get('domains', {}).items():
@@ -467,6 +562,8 @@ class SharedQueue:
                 'phase': control.get('phase', 'full'), 'state': control['state'],
                 'updated_at': datetime.fromtimestamp(now, timezone.utc).isoformat(),
                 **dict(totals), 'counts': dict(counts), 'domains': domain_rows,
-                'pending': pending, 'downloading': downloading, 'workers': workers,
+                'pending': pending, 'downloading': downloading,
+                'publisher_remaining': max(0, totals['total'] - totals['processed'] - totals['archive_remaining']),
+                'workers': workers,
                 'worker_count': len(workers), 'stop': control.get('stop', False),
                 'error': control.get('error')}

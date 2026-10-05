@@ -1,5 +1,5 @@
 """Bounded automated recovery toolbox; every stage leaves an auditable outcome."""
-import gzip,json,time,threading,hashlib
+import copy,gzip,json,time,threading,hashlib,math
 from urllib.parse import urlsplit,urlencode
 from crawl import Fetcher,key,now,public_url,UA
 from isolation import extract_isolated as extract,render_isolated,IsolationError,queue_wait_seconds
@@ -10,10 +10,25 @@ class Pipeline(Fetcher):
  def __init__(self,*args,**kwargs):
   super().__init__(*args,**kwargs);self.live={};self.browser_lock=threading.Lock()
  def read(self,uri):return gzip.decompress(self.bucket.blob(uri.split('/'+self.bucket.name+'/',1)[1]).download_as_bytes(timeout=30))
- def fetch(self,item,run,country):
+ def fetch_phase(self,item,run,country,*,phase='publisher',checkpoint=None):
+  return Pipeline.fetch(self,item,run,country,_phase=phase,_checkpoint=checkpoint)
+ def fetch(self,item,run,country,*,_phase=None,_checkpoint=None):
+  if _phase not in (None,'publisher','archive'):raise ValueError('Unknown extraction phase')
   aid=key(item['url']);began=time.monotonic();queued_at_start=queue_wait_seconds();host_queued_at_start=self.host_queue_wait_seconds();events=[];best=None;unresolved=False
-  def elapsed():return time.monotonic()-began-(queue_wait_seconds()-queued_at_start)-(self.host_queue_wait_seconds()-host_queued_at_start)
+  previous_elapsed=0.
   result={**item,'article_id':aid,'run_id':run,'country':country,'updated_at':now(),'status':'deferred','attempts':events,'response_bytes':0,'stored_bytes':0,'raw_uri':None,'text_uri':None,'http_status':None,'error':None,'reused':False}
+  if _phase=='archive':
+   checkpoint=copy.deepcopy(_checkpoint)
+   if not isinstance(checkpoint,dict) or checkpoint.get('version')!=1 or checkpoint.get('next_phase')!='archive':raise ValueError('Archive phase requires its publisher checkpoint')
+   result=checkpoint['result']
+   if (result.get('article_id'),result.get('run_id'),result.get('country'))!=(aid,run,country):raise ValueError('Checkpoint belongs to a different article or run')
+   events=result['attempts'];best=checkpoint['best'];unresolved=checkpoint['unresolved'];previous_elapsed=float(checkpoint['elapsed_seconds'])
+   if not math.isfinite(previous_elapsed) or previous_elapsed<0:raise ValueError('Invalid checkpoint work duration')
+   result.update(status='deferred',updated_at=now())
+  elif _checkpoint is not None:
+   if _phase!='publisher' or _checkpoint.get('version')!=1 or _checkpoint.get('next_phase')!='publisher':raise ValueError('Publisher phase cannot resume an archive checkpoint')
+   best=copy.deepcopy(_checkpoint.get('best'))
+  def elapsed():return previous_elapsed+time.monotonic()-began-(queue_wait_seconds()-queued_at_start)-(self.host_queue_wait_seconds()-host_queued_at_start)
   def stage(name,outcome,**kw):
    events.append({'stage':name,'status':outcome,'finished_at':now(),**kw});result['updated_at']=now()
    self.put(f'runs/{run}/toolbox/{aid}.json',json.dumps(result),'application/json')
@@ -38,34 +53,44 @@ class Pipeline(Fetcher):
    analysis=consider(body,got.get('final_url',url),got.get('raw_uri'),got.get('http_status'),name) if body and got.get('http_status')==200 and 'partial' not in (got.get('error') or '') else None
    return got,analysis
   try:
-   active('HTTP + extraction')
-   first,analysis=retrieve(item['url'],'http')
-   unresolved|=first['status'] in ('temporary_error','rate_limited')
-   # Canonical/OG URLs are discovered from the response, never manually supplied.
-   if not best or best['quality']!='candidate':
-    choices=list(dict.fromkeys((analysis or {}).get('discovered',[])))[:2]
-    if not choices:stage('publisher_url_discovery','no_candidate',reason='No alternative same-host canonical/OG article URL in response')
-    for url in choices:
-     if elapsed()>240:unresolved=True;stage('publisher_url_discovery','deferred',reason='Per-URL time budget');break
-     got,_=retrieve(url,'publisher_url_discovery');unresolved|=got['status'] in ('temporary_error','rate_limited')
-     if best and best['quality']=='candidate':break
-   else:stage('publisher_url_discovery','not_needed',reason='Usable candidate from initial HTML')
-   if not best or best['quality']!='candidate':
-    if first['status'] in ('blocked','robots_denied','robots_unavailable','rate_limited') or (analysis or {}).get('paywall'):
-     stage('browser','not_applicable',reason='Access restriction, robots policy or paywall; browser is not a bypass')
-    elif first.get('http_status')!=200:
-     stage('browser','not_applicable',reason='No successful HTML document to render')
-    elif elapsed()>240:
-     unresolved=True;stage('browser','deferred',reason='Per-URL time budget')
-    else:
-     active('browser')
-     try:
-      body,source=self.render(first.get('final_url',item['url']))
-      raw=self.put(f'runs/{run}/rendered/{aid}.html.gz',gzip.compress(body,mtime=0),'application/gzip')
-      result['stored_bytes']+=len(gzip.compress(body));result['response_bytes']+=len(body)
-      stage('browser','rendered',raw_uri=raw,url=source);consider(body,source,raw,method='browser')
-     except Exception as e:unresolved=True;stage('browser','deferred',reason=type(e).__name__+': '+str(e)[:250])
-   else:stage('browser','not_needed',reason='Usable candidate already found')
+   if _phase!='archive':
+    active('HTTP + extraction')
+    first,analysis=retrieve(item['url'],'http')
+    unresolved|=first['status'] in ('temporary_error','rate_limited')
+    # Canonical/OG URLs are discovered from the response, never manually supplied.
+    if not best or best['quality']!='candidate':
+     choices=list(dict.fromkeys((analysis or {}).get('discovered',[])))[:2]
+     if not choices:stage('publisher_url_discovery','no_candidate',reason='No alternative same-host canonical/OG article URL in response')
+     for url in choices:
+      if elapsed()>240:unresolved=True;stage('publisher_url_discovery','deferred',reason='Per-URL time budget');break
+      got,_=retrieve(url,'publisher_url_discovery');unresolved|=got['status'] in ('temporary_error','rate_limited')
+      if best and best['quality']=='candidate':break
+    else:stage('publisher_url_discovery','not_needed',reason='Usable candidate from initial HTML')
+    if not best or best['quality']!='candidate':
+     if first['status'] in ('blocked','robots_denied','robots_unavailable','rate_limited') or (analysis or {}).get('paywall'):
+      stage('browser','not_applicable',reason='Access restriction, robots policy or paywall; browser is not a bypass')
+     elif first.get('http_status')!=200:
+      stage('browser','not_applicable',reason='No successful HTML document to render')
+     elif elapsed()>240:
+      unresolved=True;stage('browser','deferred',reason='Per-URL time budget')
+     else:
+      active('browser')
+      try:
+       body,source=self.render(first.get('final_url',item['url']))
+       raw=self.put(f'runs/{run}/rendered/{aid}.html.gz',gzip.compress(body,mtime=0),'application/gzip')
+       result['stored_bytes']+=len(gzip.compress(body));result['response_bytes']+=len(body)
+       stage('browser','rendered',raw_uri=raw,url=source);consider(body,source,raw,method='browser')
+      except Exception as e:unresolved=True;stage('browser','deferred',reason=type(e).__name__+': '+str(e)[:250])
+    else:stage('browser','not_needed',reason='Usable candidate already found')
+   if _phase=='publisher' and (not best or best['quality']!='candidate'):
+    # A durable handoff frees the article slot before archive host contention.
+    # The extracted candidate and its immutable evidence references travel with
+    # the checkpoint; the recovery worker does not repeat publisher work.
+    self.check_running()
+    checkpoint={'version':1,'next_phase':'archive','result':copy.deepcopy(result),
+                'best':copy.deepcopy(best),'unresolved':unresolved,'elapsed_seconds':max(0.,elapsed())}
+    return {**result,'status':'queued','next_phase':'archive','retry_at':time.time(),
+            '_checkpoint':checkpoint,'error':None}
    if not best or best['quality']!='candidate':
     seen=set()
     for stamp in [str(item.get('first_observed','')).replace('-',''),'']:
@@ -105,6 +130,7 @@ class Pipeline(Fetcher):
    result['status']='saved' if best and best['quality']=='candidate' else 'deferred' if unresolved else 'partial' if best else 'exhausted'
    result['error']=None if result['status']=='saved' else 'Some toolbox stages need retry' if unresolved else 'All applicable toolbox stages exhausted'
    stage('final',result['status'],version=VERSION,quality=best['quality'] if best else 'missing',characters=len(best['text']) if best else 0)
+   if _phase is not None and result['status']=='deferred':result['_retry_best']=copy.deepcopy(best)
    return result
   finally:
    with self.lock:self.live.pop(aid,None)

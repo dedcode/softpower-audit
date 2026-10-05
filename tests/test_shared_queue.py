@@ -1,4 +1,5 @@
 import copy
+from dataclasses import replace
 import sys
 import threading
 import unittest
@@ -363,6 +364,170 @@ class SharedQueueTests(unittest.TestCase):
         self.database.query_count = 0
         self.queue.summary()
         self.assertEqual(self.database.query_count, 1)  # worker heartbeats only
+
+    def test_legacy_publisher_handoff_is_durable_pending_and_indexed_separately(self):
+        self.seed([article(0)])
+        original = self.queue.articles.document(article_key(article(0)['url'])).get().to_dict()
+        self.assertNotIn('phase', original)
+        self.assertEqual(self.queue.claim(1, phase='archive'), [])
+        claim = self.queue.claim(1)[0]
+        self.assertEqual((claim.phase, claim.checkpoint_uri), ('publisher', None))
+        checkpoint = 'gs://bucket/phases/publisher.json.gz'
+        self.assertTrue(self.queue.handoff(claim, checkpoint, next_phase='archive',
+                                          retry_at=self.now + 100, result=result(claim.item, 'queued')))
+        doc = self.queue.articles.document(claim.article_id).get().to_dict()
+        self.assertEqual(doc['state'], 'ready')
+        self.assertEqual(doc['phase'], 'archive')
+        self.assertNotIn('due_at', doc)
+        self.assertEqual(doc['archive_due_at'], self.now + 100)
+        self.assertEqual(self.queue.claim(1), [])
+        self.assertEqual(self.queue.claim(1, phase='archive'), [])
+        summary = self.queue.summary()
+        self.assertEqual((summary['processed'], summary['pending']), (0, 1))
+        self.assertEqual((summary['publisher_remaining'], summary['archive_remaining']), (0, 1))
+        self.assertEqual((summary['attempts'], summary['retries'], summary['response_bytes']), (3, 2, 100))
+        self.assertEqual(summary['counts'], {})
+        self.assertEqual(self.queue.export_pending(), [])
+        self.now += 100
+        archive = self.make_queue('archive-worker').claim(1, phase='archive')[0]
+        self.assertEqual((archive.phase, archive.checkpoint_uri), ('archive', checkpoint))
+
+    def test_phase_metrics_are_cumulative_and_counted_only_once_through_final_completion(self):
+        self.seed([article(0)])
+        first = self.queue.claim(1)[0]
+        first_result = result(first.item, 'queued')
+        self.queue.handoff(first, 'gs://bucket/phase1', next_phase='archive', retry_at=0, result=first_result)
+        archive = self.queue.claim(1, phase='archive')[0]
+        second_result = copy.deepcopy(first_result)
+        second_result['attempts'].append({'http_attempts': [{}, {}]})
+        second_result.update(response_bytes=260, stored_bytes=130)
+        self.assertTrue(self.queue.handoff(archive, 'gs://bucket/phase2', next_phase='archive', retry_at=0, result=second_result))
+        summary = self.queue.summary()
+        self.assertEqual((summary['processed'], summary['attempts'], summary['retries']), (0, 5, 3))
+        self.assertEqual((summary['response_bytes'], summary['stored_bytes']), (260, 130))
+        archive = self.queue.claim(1, phase='archive')[0]
+        self.assertTrue(self.queue.handoff(archive, 'gs://bucket/phase3', next_phase='publisher', retry_at=0, result=second_result))
+        summary = self.queue.summary()
+        self.assertEqual((summary['publisher_remaining'], summary['archive_remaining']), (1, 0))
+        publisher = self.queue.claim(1)[0]
+        final = copy.deepcopy(second_result)
+        final['attempts'].append({'http_attempts': [{}]})
+        final.update(status='saved', response_bytes=400, stored_bytes=200)
+        self.assertTrue(self.queue.complete(publisher, final, 'gs://bucket/final'))
+        self.assertTrue(self.queue.complete(publisher, final, 'gs://bucket/final'))
+        summary = self.queue.summary()
+        self.assertEqual((summary['processed'], summary['attempts'], summary['retries']), (1, 6, 3))
+        self.assertEqual((summary['response_bytes'], summary['stored_bytes']), (400, 200))
+        self.assertEqual((summary['publisher_remaining'], summary['archive_remaining']), (0, 0))
+        self.assertEqual(summary['counts'], {'saved': 1})
+        self.assertEqual(len(self.queue.export_pending()), 1)
+
+    def test_duplicate_handoff_acknowledgement_cannot_steal_the_next_phase_claim(self):
+        self.seed([article(0)])
+        publisher = self.queue.claim(1)[0]
+        checkpoint = 'gs://bucket/checkpoint'
+        outcome = result(publisher.item, 'queued')
+        self.assertTrue(self.queue.handoff(publisher, checkpoint, next_phase='archive', retry_at=0, result=outcome))
+        self.assertTrue(self.queue.handoff(publisher, checkpoint, next_phase='archive', retry_at=0, result=outcome))
+        other = self.make_queue('archive-worker')
+        archive = other.claim(1, phase='archive')[0]
+        self.assertTrue(self.queue.handoff(publisher, checkpoint, next_phase='archive', retry_at=0, result=outcome))
+        self.assertFalse(self.queue.handoff(publisher, 'gs://bucket/stale', next_phase='publisher', retry_at=0, result=outcome))
+        self.assertFalse(self.queue.release(publisher))
+        self.assertFalse(self.queue.complete(publisher, result(publisher.item), 'gs://bucket/stale-final'))
+        row = self.queue.articles.document(publisher.article_id).get().to_dict()
+        self.assertEqual((row['owner'], row['claim_token'], row['state']), ('archive-worker', archive.token, 'leased'))
+        self.assertEqual(self.queue.summary()['attempts'], 3)
+
+    def test_archive_lease_heartbeat_expiry_and_release_preserve_its_checkpoint(self):
+        self.seed([article(0)])
+        publisher = self.queue.claim(1)[0]
+        self.queue.handoff(publisher, 'gs://bucket/phase', next_phase='archive', retry_at=0, result=result(publisher.item, 'queued'))
+        archive = self.queue.claim(1, phase='archive')[0]
+        self.now += 500
+        self.assertEqual(self.queue.heartbeat([archive]), set())
+        row = self.queue.articles.document(archive.article_id).get().to_dict()
+        self.assertEqual(row['archive_due_at'], self.now + 600)
+        self.assertNotIn('due_at', row)
+        self.now += 601
+        replacement_queue = self.make_queue('replacement')
+        self.assertEqual(replacement_queue.claim(1), [])
+        replacement = replacement_queue.claim(1, phase='archive')[0]
+        self.assertEqual(replacement.checkpoint_uri, 'gs://bucket/phase')
+        self.assertFalse(self.queue.handoff(archive, 'gs://bucket/stale', next_phase='publisher', retry_at=0, result=result(archive.item, 'queued')))
+        self.assertTrue(replacement_queue.release(replacement))
+        next_claim = self.queue.claim(1, phase='archive')[0]
+        self.assertEqual(next_claim.checkpoint_uri, 'gs://bucket/phase')
+        self.assertTrue(self.queue.complete(next_claim, result(next_claim.item), 'gs://bucket/final'))
+        summary = self.queue.summary()
+        self.assertEqual((summary['archive_remaining'], summary['processed'], summary['attempts']), (0, 1, 3))
+        self.assertNotIn('archive_due_at', self.queue.articles.document(next_claim.article_id).get().to_dict())
+
+    def test_phase_fence_rejects_wrong_phase_even_with_current_owner_and_token(self):
+        self.seed([article(0)])
+        publisher = self.queue.claim(1)[0]
+        self.queue.handoff(publisher, 'gs://bucket/phase', next_phase='archive', retry_at=0, result=result(publisher.item, 'queued'))
+        archive = self.queue.claim(1, phase='archive')[0]
+        wrong = replace(archive, phase='publisher')
+        self.assertFalse(self.queue.release(wrong))
+        self.assertFalse(self.queue.complete(wrong, result(wrong.item), 'gs://bucket/wrong'))
+        self.assertFalse(self.queue.handoff(wrong, 'gs://bucket/wrong', next_phase='publisher', retry_at=0, result=result(wrong.item, 'queued')))
+        self.assertEqual(self.queue.heartbeat([wrong]), {wrong.article_id})
+        self.assertEqual(wrong.lease_until, 0)
+        self.assertEqual(self.queue.heartbeat([archive]), set())
+
+    def test_nonterminal_completion_and_decreasing_cumulative_metrics_are_rejected_atomically(self):
+        self.seed([article(0)])
+        first = self.queue.claim(1)[0]
+        with self.assertRaisesRegex(ValueError, 'terminal'):
+            self.queue.complete(first, result(first.item, 'queued'), 'gs://bucket/not-final')
+        self.queue.handoff(first, 'gs://bucket/phase', next_phase='archive', retry_at=0, result=result(first.item, 'queued'))
+        archive = self.queue.claim(1, phase='archive')[0]
+        decreasing = {**result(archive.item, 'queued'), 'response_bytes': 0}
+        with self.assertRaisesRegex(ValueError, 'cannot decrease'):
+            self.queue.handoff(archive, 'gs://bucket/bad-metrics', next_phase='publisher', retry_at=0, result=decreasing)
+        with self.assertRaisesRegex(ValueError, 'cannot decrease'):
+            self.queue.complete(archive, {**decreasing, 'status': 'saved'}, 'gs://bucket/bad-final')
+        summary = self.queue.summary()
+        self.assertEqual((summary['processed'], summary['archive_remaining'], summary['response_bytes']), (0, 1, 100))
+        self.assertEqual(self.queue.articles.document(archive.article_id).get().to_dict()['state'], 'leased')
+        self.assertEqual(self.queue.export_pending(), [])
+
+    def test_nonterminal_result_cannot_escape_through_an_inconsistent_outbox_flag(self):
+        self.seed([article(0)])
+        claim = self.queue.claim(1)[0]
+        self.queue.handoff(claim, 'gs://bucket/phase', next_phase='archive', retry_at=0, result=result(claim.item, 'queued'))
+        self.queue.articles.document(claim.article_id).update({'needs_export': True})
+        with self.assertRaisesRegex(RuntimeError, 'Nonterminal'):
+            self.queue.export_pending()
+
+    def test_phase_specific_queries_and_cursors_do_not_scan_other_phase(self):
+        self.seed([article(i, f'news-{i % 20}.ke') for i in range(1000)])
+        first = self.queue.claim(1)[0]
+        self.queue.handoff(first, 'gs://bucket/phase', next_phase='archive', retry_at=0, result=result(first.item, 'queued'))
+        self.database.query_results = 0
+        archive = self.queue.claim(1, phase='archive')[0]
+        self.assertEqual(archive.article_id, first.article_id)
+        self.assertEqual(self.database.query_results, 1)
+        self.assertEqual(len(self.queue.claim(48)), 48)
+        self.assertEqual(set(self.queue._cursors), {'publisher', 'archive'})
+        self.assertNotEqual(self.queue._cursors['publisher'].id, self.queue._cursors['archive'].id)
+
+    def test_archive_concurrent_claims_have_unique_ownership(self):
+        items = [article(i, f'outlet-{i % 24}.ke') for i in range(96)]
+        self.seed(items)
+        for _ in range(2):
+            for publisher in self.queue.claim(48):
+                self.queue.handoff(publisher, 'gs://bucket/' + publisher.article_id, next_phase='archive', retry_at=0, result=result(publisher.item, 'queued'))
+        queues = [self.make_queue(f'archive-{i}') for i in range(4)]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            batches = list(pool.map(lambda queue: queue.claim(24, phase='archive'), queues))
+        claims = [claim for batch in batches for claim in batch]
+        self.assertEqual(len(claims), 96)
+        self.assertEqual(len({claim.article_id for claim in claims}), 96)
+        self.assertTrue(all(claim.phase == 'archive' and claim.checkpoint_uri for claim in claims))
+        summary = self.queue.summary()
+        self.assertEqual((summary['processed'], summary['publisher_remaining'], summary['archive_remaining']), (0, 0, 96))
 
     def test_release_preserves_unfinished_work_for_another_instance(self):
         self.seed([article(0)])

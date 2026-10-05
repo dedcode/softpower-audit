@@ -50,7 +50,7 @@ def bare_run():
     run.bucket.name = 'private-test'
     run.bq = Mock()
     run.fetcher = SimpleNamespace(abort_event=threading.Event(), request_context=threading.local(),
-                                  lock=threading.Lock(), live={}, fetch=Mock())
+                                  lock=threading.Lock(), live={}, fetch=Mock(), fetch_phase=Mock())
     run.recovery = SimpleNamespace(attempt_elapsed=0, reserve_restart=Mock(return_value=True))
     run.lease = Mock()
     run.lease.name = 'control/test-lease.json'
@@ -294,10 +294,10 @@ class FencingTests(unittest.TestCase):
         run.verification = False
         item = claim()
         run.deadlines[item.article_id] = time.monotonic() + 500
-        def aborted(*args):
+        def aborted(*args, **kwargs):
             run.fetcher.abort_event.set()
             return {'status': 'failed'}
-        run.fetcher.fetch.side_effect = aborted
+        run.fetcher.fetch_phase.side_effect = aborted
         with self.assertRaisesRegex(RuntimeError, 'lost queue ownership'):
             run.fetch_claim(item)
 
@@ -307,10 +307,10 @@ class FencingTests(unittest.TestCase):
         item = claim()
         run.deadlines[item.article_id] = time.monotonic() + 500
         seen = []
-        def fetching(*args):
+        def fetching(*args, **kwargs):
             seen.append(run.fetcher.request_context.output_scope)
             raise RuntimeError('interrupted')
-        run.fetcher.fetch.side_effect = fetching
+        run.fetcher.fetch_phase.side_effect = fetching
         with self.assertRaisesRegex(RuntimeError, 'interrupted'):
             run.fetch_claim(item)
         self.assertEqual(seen, [item.article_id + '/' + item.token])
@@ -379,6 +379,26 @@ class OutboxTests(unittest.TestCase):
         run.bucket.blob.return_value.download_as_bytes.return_value = gzip.compress(json.dumps(evidence).encode())
         return run, record
 
+    def prepare_many(self, count):
+        run = bare_run()
+        run.heartbeat = Mock()
+        records = []
+        evidence = {}
+        for index in range(count):
+            article_id = 'article-' + str(index)
+            path = run.prefix + 'distributed/results/' + article_id + '/token.json.gz'
+            records.append({'article_id': article_id, 'claim_token': 'token',
+                            'result_uri': 'gs://private-test/' + path})
+            evidence[path] = gzip.compress(json.dumps({'article_id': article_id, 'run_id': run.run_id,
+                'outlet': 'example.test', 'status': 'saved', 'attempts': []}).encode())
+        def blob(path):
+            result = Mock()
+            result.download_as_bytes.return_value = evidence[path]
+            return result
+        run.bucket.blob.side_effect = blob
+        run.queue.export_pending.return_value = records
+        return run, records, evidence
+
     def test_failed_bigquery_load_keeps_durable_outbox(self):
         run, record = self.prepare()
         run.bq.load_table_from_file.return_value.result.side_effect = RuntimeError('BQ unavailable')
@@ -392,6 +412,56 @@ class OutboxTests(unittest.TestCase):
         run.bq.load_table_from_file.return_value.result.assert_called_once_with(timeout=90)
         run.queue.mark_exported.assert_called_once_with([record])
         self.assertGreaterEqual(run.heartbeat.call_count, 2)
+        run.queue.export_pending.assert_called_once_with(limit=500)
+
+    def test_prefetched_records_beyond_byte_limit_remain_unacknowledged(self):
+        run, records, _ = self.prepare_many(12)
+        # JsonlBatch permits one oversized record, then requires a new load.
+        with patch.object(distributed, 'JsonlBatch', return_value=distributed.JsonlBatch(500, 1)):
+            run.export_results()
+        run.queue.mark_exported.assert_called_once_with(records[:1])
+        self.assertLessEqual(run.bucket.blob.call_count, 8)
+
+    def test_parallel_reads_are_bounded_to_eight_and_heartbeat_between_chunks(self):
+        run, records, evidence = self.prepare_many(9)
+        lock = threading.Lock()
+        barrier = threading.Barrier(8)
+        reads = [0]
+        active = [0]
+        peak = [0]
+        heartbeat_read_counts = []
+        def blob(path):
+            result = Mock()
+            def download(**kwargs):
+                index = int(path.split('/article-', 1)[1].split('/', 1)[0])
+                with lock:
+                    active[0] += 1
+                    peak[0] = max(peak[0], active[0])
+                if index < 8:
+                    barrier.wait(timeout=5)
+                with lock:
+                    reads[0] += 1
+                    active[0] -= 1
+                return evidence[path]
+            result.download_as_bytes.side_effect = download
+            return result
+        run.bucket.blob.side_effect = blob
+        run.last_heartbeat = 0
+        run.heartbeat.side_effect = lambda state: heartbeat_read_counts.append(reads[0])
+        with patch.object(distributed.time, 'monotonic', return_value=100):
+            run.export_results()
+        self.assertEqual(peak[0], 8)
+        self.assertEqual(heartbeat_read_counts, [0, 8, 9, 9])
+        run.queue.mark_exported.assert_called_once_with(records)
+
+    def test_empty_outbox_resets_poll_interval(self):
+        run, _ = self.prepare()
+        run.queue.export_pending.return_value = []
+        run.last_export = 0
+        with patch.object(distributed.time, 'monotonic', return_value=100):
+            run.export_results()
+        self.assertEqual(run.last_export, 100)
+        run.bq.load_table_from_file.assert_not_called()
 
     def test_foreign_result_uri_is_rejected_before_reading_or_loading(self):
         run, record = self.prepare()

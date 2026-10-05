@@ -147,7 +147,19 @@ class DistributedRun(Run):
                           'attempts': [], 'response_bytes': 0, 'stored_bytes': 0, 'error': None,
                           'reused': False, 'raw_uri': None, 'text_uri': None}
             else:
-                result = self.fetcher.fetch(claim.item, self.run_id, self.country)
+                checkpoint = None
+                if claim.checkpoint_uri:
+                    prefix = 'gs://' + self.bucket.name + '/' + self.prefix + 'distributed/checkpoints/' + claim.article_id + '/'
+                    if not claim.checkpoint_uri.startswith(prefix):
+                        raise RuntimeError('Unexpected phase checkpoint location')
+                    path = claim.checkpoint_uri.split('gs://' + self.bucket.name + '/', 1)[1]
+                    envelope = json.loads(gzip.decompress(self.bucket.blob(path).download_as_bytes(timeout=30)))
+                    if (envelope.get('article_id') != claim.article_id or envelope.get('run_id') != self.run_id
+                            or envelope.get('phase') != claim.phase):
+                        raise RuntimeError('Phase checkpoint does not match its queued article')
+                    checkpoint = envelope['checkpoint']
+                result = self.fetcher.fetch_phase(claim.item, self.run_id, self.country,
+                                                  phase=claim.phase, checkpoint=checkpoint)
             # Infrastructure cancellation is never a terminal extraction failure.
             # A successfully preserved article may still commit if its fence holds.
             if result.get('status') != 'saved':
@@ -156,6 +168,32 @@ class DistributedRun(Run):
         finally:
             self.fetcher.request_context.guard = None
             self.fetcher.request_context.output_scope = None
+
+    def claim_available(self):
+        """Archive waits get a small separate pool, never all article slots.
+
+        Both phases remain in the same durable queue. A handoff frees a publisher
+        slot immediately; it does not finish the article or consume a retry.
+        """
+        from collections import Counter
+        with self.claim_lock:
+            active = list(self.claims.values())
+        capacity = self.config['workers'] - len(active)
+        if capacity <= 0:
+            return []
+        archive_limit = min(2, max(1, self.config['workers'] // 8))
+        publisher_limit = max(1, self.config['workers'] - archive_limit)
+        selected = []
+        for phase, limit in (('publisher', publisher_limit), ('archive', archive_limit)):
+            phase_claims = [claim for claim in active if claim.phase == phase]
+            available = min(capacity, max(0, limit - len(phase_claims)))
+            if not available:
+                continue
+            claims = self.queue.claim(limit=available, per_outlet=self.config.get('per_outlet_workers', 4),
+                                      inflight=Counter(claim.item['outlet'] for claim in phase_claims), phase=phase)
+            selected.extend(claims)
+            capacity -= len(claims)
+        return selected
 
     def update_deadlines(self, claims):
         with self.claim_lock:
@@ -263,6 +301,22 @@ class DistributedRun(Run):
             self.forget_claim(claim)
 
     def persist_result(self, claim, result):
+        if result.get('status') == 'queued':
+            self.request_guard(claim.article_id)
+            phase = result['next_phase']
+            if phase not in ('publisher', 'archive'):
+                raise ValueError('Invalid next extraction phase')
+            path = self.prefix + 'distributed/checkpoints/' + claim.article_id + '/' + claim.token + '.json.gz'
+            envelope = {'article_id': claim.article_id, 'run_id': self.run_id,
+                        'phase': phase, 'checkpoint': result['_checkpoint']}
+            self.bucket.blob(path).upload_from_string(gzip.compress(encode_jsonl(envelope), mtime=0),
+                                                     content_type='application/gzip', if_generation_match=0, timeout=60)
+            if not self.queue.handoff(claim, 'gs://' + self.bucket.name + '/' + path,
+                                      next_phase=phase, retry_at=result['retry_at'], result=result):
+                self.fetcher.abort_event.set()
+                raise RuntimeError('Phase handoff rejected because claim ownership expired or changed')
+            self.forget_claim(claim)
+            return
         # Evidence precedes the fenced done transition. A stale task can never
         # replace accepted results or count the same URL twice.
         path = self.prefix + 'distributed/results/' + claim.article_id + '/' + claim.token + '.json.gz'
@@ -274,14 +328,14 @@ class DistributedRun(Run):
         self.forget_claim(claim)
 
     def export_results(self):
-        records = self.queue.export_pending(limit=100)
+        records = self.queue.export_pending(limit=500)
         if not records:
+            self.last_export = time.monotonic()
             return
-        batch = JsonlBatch(1000, 8 * 1024 * 1024)
+        batch = JsonlBatch(500, 8 * 1024 * 1024)
         accepted = []
-        for record in records:
-            if time.monotonic() - self.last_heartbeat >= 20:
-                self.heartbeat(self.worker_state)
+
+        def read_record(record):
             uri = record['result_uri']
             prefix = 'gs://' + self.bucket.name + '/'
             if not uri.startswith(prefix + self.prefix + 'distributed/results/'):
@@ -290,11 +344,25 @@ class DistributedRun(Run):
             if result.get('article_id') != record['article_id'] or result.get('run_id') != self.run_id:
                 raise RuntimeError('Outbox evidence does not match its queued article and run')
             result['attempts_json'] = json.dumps(result.pop('attempts', []), separators=(',', ':'))
-            encoded = encode_jsonl(result)
-            if not batch.fits(encoded):
-                break
-            batch.append(encoded)
-            accepted.append(record)
+            return encode_jsonl(result)
+
+        # Prefetch only eight immutable result objects at a time. Never retain
+        # all 500 decoded records while waiting on GCS, and never acknowledge a
+        # prefetched record that did not fit in the byte-bounded load batch.
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            full = False
+            for offset in range(0, len(records), 8):
+                if time.monotonic() - self.last_heartbeat >= 20:
+                    self.heartbeat(self.worker_state)
+                chunk = records[offset:offset + 8]
+                for record, encoded in zip(chunk, pool.map(read_record, chunk)):
+                    if not batch.fits(encoded):
+                        full = True
+                        break
+                    batch.append(encoded)
+                    accepted.append(record)
+                if full:
+                    break
         if accepted:
             self.heartbeat(self.worker_state)
             config = bigquery.LoadJobConfig(ignore_unknown_values=True, source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON)
@@ -374,11 +442,9 @@ class DistributedRun(Run):
                         memory = memory_usage()
                         pressure = bool(memory.get('limit_bytes') and memory.get('current_bytes', 0) >= .75 * memory['limit_bytes'])
                         if state == 'running' and not pressure:
-                            from collections import Counter
-                            inflight = Counter(claim.item['outlet'] for claim in self.claims.values())
                             capacity = self.config['workers'] - len(self.active)
                             if capacity and time.monotonic() >= next_refill:
-                                claims = self.queue.claim(limit=capacity, per_outlet=self.config.get('per_outlet_workers', 4), inflight=inflight)
+                                claims = self.claim_available()
                                 refill_delay = 3 if claims else min(30, max(5, refill_delay * 2))
                                 next_refill = time.monotonic() + refill_delay
                                 for claim in claims:
@@ -406,6 +472,8 @@ class DistributedRun(Run):
                             continue
                         finished, _ = wait(self.active, timeout=1, return_when=FIRST_COMPLETED)
                         for future in finished:
+                            if time.monotonic() - self.last_heartbeat >= 20:
+                                self.heartbeat(state)
                             claim = self.active.pop(future)
                             try:
                                 result = future.result()

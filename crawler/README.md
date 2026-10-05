@@ -510,7 +510,7 @@ Each required renewal had exactly one successful writer; concurrent conflicts
 were handled successfully. The slowest operation took 2.489 seconds. Proof:
 `runs/verify-distributed-ten-refresh-20261005-144526-caec5997/verification.json`.
 
-Corrected production execution `softpower-crawler-wkzlt` runs image
+Corrected production execution `softpower-crawler-wkzlt` ran image
 `distributed-20261005-r4`, launched by workflow
 `120dac3d-db9b-4193-bc11-46571625e1bb`. The rollover preserved 19,310 completed
 results. Verification on 2026-10-05 around 15:01 UTC confirmed all ten live
@@ -521,3 +521,54 @@ The authoritative count had advanced to 19,359, including 47 additional saved
 full texts. A new result's original response and extracted text were verified
 in GCS; the public status API also reports ten active instances and 480 slots.
 Proof: `runs/ke-full-20261003-192939/distributed/scale-to-10-r4/verification.json`.
+
+### Separate publisher collection from archive recovery, 2026-10-05
+
+The r4 cohort was healthy but eventually had 477 of 480 article pipelines in
+archive stages. Whole-article futures held their slots while waiting for the
+same two archive hosts, leaving publisher websites idle. Worker count alone did
+not deliver proportional throughput.
+
+Image `distributed-20261005-r5` runs durable publisher and archive phases.
+Each 48-slot instance reserves 46 publisher slots and at most two archive slots.
+Publisher work retains HTTP, discovered canonical URLs, extraction, and eligible
+browser rendering. If archive recovery is needed, it saves an immutable private
+checkpoint and releases the publisher slot. A recovery claim resumes that
+checkpoint without repeating publisher requests. Checkpoints retain partial
+text, original-response references, attempted stages, counters, useful elapsed
+time, and retry-pass state. Whole-pass retries return to the publisher queue with
+a due time instead of sleeping in a slot. All applicable recovery attempts remain.
+
+Firestore uses the existing indexed `due_at` field for publisher work and a
+separate indexed `archive_due_at` field for recovery. Legacy records need no
+rewrite. A phase handoff is fenced by owner, token, phase, and lease expiry; it
+does not increment processed counts or produce a BigQuery result. Cumulative
+attempt/byte metrics are accounted at handoff and only their remaining delta at
+completion. `publisher_remaining` and `archive_remaining` include their active
+claims; both remain unfinished work. Completed results and outbox acknowledgments
+retain their existing semantics.
+
+BigQuery exports now take up to 500 results per batch, retaining the 8 MiB batch
+limit. Only eight immutable result objects are read concurrently, and records
+that do not fit remain in the outbox. Worker heartbeats also run during bursts of
+completed article futures. Per-host pacing, resource limits, memory safeguards,
+collection budgets, and automatic continuation remain enabled.
+
+All 235 Python tests pass. A live isolated test with ten clients handed off and
+completed 20 synthetic articles, verified checkpoints and actual archive queries,
+and repeated handoff/completion calls without duplicate counts. Exactly 60
+attempts, 3,000 response bytes, and 20 saved test results were recorded. No
+publisher requests or production articles were used in this test. Proof:
+`runs/verify-distributed-phases-20261005-175913-cb3f40/verification.json`.
+Cloud Build `1e3d7ed8-8822-410a-89ad-3a8f868d62ac` succeeded; its uploaded source
+was compared byte-for-byte with the four tested crawler modules.
+
+The r5 rollover retained all 20,544 completed results, including 16,646 saved
+full texts, in the same 85,993-URL queue. Workflow
+`0ad32b27-d1d1-42b1-b2da-a95d2c0da3d1` launched execution
+`softpower-crawler-vdwqp` at 18:07 UTC. Its image digest is
+`sha256:d501160a624627a1ff5488f89128f2b37558e8214a3785f56be9a5e26a13325a`.
+Rollover and launch evidence are under
+`runs/ke-full-20261003-192939/distributed/phased-r5/`.
+The last 586 seconds before stopping r4 produced 56 full texts, approximately
+344 saved texts/hour; this is an observed window, not a controlled benchmark.
