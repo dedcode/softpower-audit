@@ -354,3 +354,63 @@ Live verification at 09:54 UTC confirmed all 17,922 prior results were restored,
 (11 additional full texts after restart). The public status API reported the
 same running state with no error. All 18 checkpoint replay loads completed with
 no bad records or load failures.
+
+### Multiple crawler instances with one shared list, 2026-10-05
+
+The distributed deployment uses four Cloud Run tasks in one execution. Each
+instance has 48 article slots, four pipelines per outlet, 4 CPUs / 4 GiB, three
+isolated heavy-process slots and one browser. Instance count is configurable
+with `--instances`; the first deployment provides 192 article slots.
+
+The named Firestore database `softpower-crawl` in `us-central1` stores the shared
+list and compact coordination metadata. Each URL has one transactional claim
+with an owner, a random fencing token and a renewable ten-minute lease. A
+replacement may reclaim expired work, while stale owners cannot complete it or
+increment counts. Original evidence and extracted text remain in private GCS;
+result rows remain in BigQuery. Claim-specific artifact paths prevent a late
+worker from overwriting a replacement's accepted text. Retrieval is at least
+once after failures; accepted completion/accounting is idempotent.
+
+Host leases are shared across all instances, including archive hosts. HTTP
+requests remain serialized per host with shared spacing, robots delays and
+Retry-After cooldowns. Browser document starts share pacing and broadcast
+429/503 cooldowns; browser assets retain their existing behavior. More instances
+increase overlap across sources and extraction stages without multiplying the
+per-host request rate. Each worker stops new requests if its article ownership
+becomes uncertain. The existing memory guard and parser/browser isolation remain.
+
+Progress is aggregated from 32 compact counter shards and task heartbeats, not
+by scanning every article. One public snapshot combines all instances and shows
+the active worker count. A durable outbox records results needing BigQuery
+export; a load failure cannot lose an accepted article result. The existing
+latest-row view removes repeated export events after a retry. Heartbeats and
+bounded query/refill intervals keep coordination work proportional to activity.
+
+Migration order:
+
+```sh
+python scripts/provision_shared_crawl.py --apply
+python scripts/deploy_crawler.py --run-id IMAGE_TAG --deploy --instances 4 \
+  --cpu 4 --memory-gib 4 --heavy-slots 3 --browser-slots 1
+# Drain the old execution using its existing STOP control; wait for lease release.
+python scripts/prepare_shared_crawl.py --run-id ke-full-20261003-192939 --apply
+# Remove STOP only after checking imported total and completed counts.
+python scripts/deploy_crawler.py --run-id ke-full-20261003-192939 --execute
+```
+
+The importer checks the final checkpoint count and manifest fingerprint before
+exposing the queue to workers. It preserves completed URLs and never resets a
+ready queue. Shared worker access is restricted to this named database by a
+conditional IAM binding. Full runs retain automatic continuation and no
+application runtime cutoff; byte/attempt limits apply to aggregate results.
+Cloud Run CPU/memory charges scale with the number of active instances, while
+Firestore bills coordination reads/writes. Idle workers use bounded backoff.
+
+Validation before migration: 177 Python tests pass. A live Firestore contention
+check let four independent clients claim 64 distinct URLs with no duplicate
+claims; all were returned to the synthetic queue afterward. A shared-host check
+confirmed only one admitted holder. The first two-container pilot exposed GCS
+Blob generation caching during cohort lease renewal. Renewal and release now
+use fresh object handles and retry concurrent 404/412 generation races; a live
+four-client concurrent renewal check passed after that fix. The final image is
+`distributed-20261005-r3`.

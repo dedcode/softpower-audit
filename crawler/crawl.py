@@ -1,5 +1,5 @@
 """Conservative HTTP retrieval; originals are retained independently of extraction."""
-import gzip,hashlib,ipaddress,json,socket,threading,time,uuid
+import gzip,hashlib,ipaddress,json,os,socket,threading,time,uuid
 from datetime import datetime,timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit,urljoin
@@ -34,9 +34,29 @@ class HostCooldown(requests.RequestException):
 
 class Fetcher:
     parse_initial=True
-    def __init__(self,bucket,run_id,delay=3,max_attempts=3):
+    def __init__(self,bucket,run_id,delay=3,max_attempts=3,host_coordinator=None):
         self.bucket=bucket;self.run_id=run_id;self.delay=delay;self.max_attempts=max_attempts
         self.lock=threading.Lock();self.hostlocks={};self.last={};self.robots={};self.queue_wait=threading.local();self.cooldowns={}
+        self.host_coordinator=host_coordinator;self.shared_leases=threading.local()
+        self.abort_event=threading.Event();self.request_context=threading.local()
+        if self.host_coordinator is None and os.environ.get('CRAWL_FIRESTORE_DATABASE'):
+            from google.cloud import firestore
+            from shared_hosts import FirestoreHostStore,SharedHostCoordinator
+            client=firestore.Client(project=bucket.client.project,database=os.environ['CRAWL_FIRESTORE_DATABASE'])
+            self.host_coordinator=SharedHostCoordinator(FirestoreHostStore(client))
+    def request_guard(self):
+        guard=getattr(self.request_context,'guard',None)
+        def check():
+            if self.abort_event.is_set():raise RuntimeError('Crawler ownership lost; no further requests permitted')
+            if guard is not None:guard()
+        return check
+    def check_running(self):self.request_guard()()
+    @contextmanager
+    def guarded_requests(self,guard):
+        previous=getattr(self.request_context,'guard',None)
+        self.request_context.guard=guard
+        try:yield
+        finally:self.request_context.guard=previous
     def hostlock(self,host):
         with self.lock:return self.hostlocks.setdefault(host,threading.Lock())
     def host_queue_wait_seconds(self):
@@ -72,19 +92,53 @@ class Fetcher:
     @contextmanager
     def host_slot(self,host,delay=None):
         with self.queued_host_lock(host):
+            self.check_running()
+            if self.host_coordinator is not None:
+                # One local contender per host polls the global lease. Its wait
+                # does not consume the article/browser's useful-work deadline.
+                with self.queued_wait():lease=self.host_coordinator.acquire(host,max(self.delay,delay or 0),cancelled=self.abort_event.is_set,guard=self.request_guard())
+                if not hasattr(self.shared_leases,'active'):self.shared_leases.active={}
+                with lease:
+                    self.shared_leases.active[host]=lease
+                    try:
+                        yield
+                        lease.check()
+                    finally:self.shared_leases.active.pop(host,None)
+                return
             self.wait_for_host_cooldown(host)
             gap=max(self.delay,delay or 0)-(time.monotonic()-self.last.get(host,0))
             if gap>0:
                 with self.queued_wait():time.sleep(gap)
             self.last[host]=time.monotonic()
             yield
+    def scoped_path(self,path):
+        scope=getattr(self.request_context,'output_scope',None)
+        prefix='runs/'+self.run_id+'/'
+        if scope is not None and path.startswith(prefix):
+            scope=str(scope)
+            if not scope or any(part in ('','.','..') for part in scope.split('/')):raise ValueError('Invalid claim output scope')
+            return prefix+'claims/'+scope+'/'+path[len(prefix):]
+        return path
     def put(self,path,data,content_type):
+        self.check_running();path=self.scoped_path(path)
         blob=self.bucket.blob(path);blob.upload_from_string(data,content_type=content_type,timeout=60)
         return 'gs://'+self.bucket.name+'/'+path
     def defer_host(self,host,seconds):
         # Caller retains the host lock until the response is handled. All
         # article threads and archive lookups therefore observe the same pause.
+        if self.host_coordinator is not None:
+            lease=getattr(self.shared_leases,'active',{}).get(host)
+            if lease is None:raise RuntimeError('Shared Retry-After requires the active host lease')
+            lease.defer(seconds)
         self.cooldowns[host]=max(self.cooldowns.get(host,0),time.monotonic()+seconds)
+    def observe_response(self,url,status,retry_after=None):
+        if status not in (429,503):return
+        self.check_running()
+        host=public_url(url).hostname;seconds=retry_seconds(retry_after,1)
+        if self.host_coordinator is not None:self.host_coordinator.defer(host,seconds)
+        # Browser callbacks may arrive while another local HTTP request holds
+        # its host lock. Only extend the cooldown; do not block that callback.
+        with self.lock:self.cooldowns[host]=max(self.cooldowns.get(host,0),time.monotonic()+seconds)
     def wait_for_host_cooldown(self,host):
         # Called with the host lock held, before admitting any HTTP/browser
         # request. Long pauses remain retryable without tying up a thread or
@@ -94,8 +148,10 @@ class Fetcher:
         if remaining>0:
             with self.queued_wait():time.sleep(remaining)
     def one(self,url,delay=None):
+        self.check_running()
         p=public_url(url)
         with self.host_slot(p.hostname,delay):
+            self.check_running()
             with requests.Session() as s:
                 s.trust_env=False
                 with s.get(url,headers={'User-Agent':UA,'Accept':'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'},timeout=(10,25),allow_redirects=False,stream=True) as r:

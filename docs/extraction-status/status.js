@@ -10,7 +10,7 @@ function render(d){
  const stale=running&&Date.now()-Date.parse(d.updated_at)>120000;
  $('state').textContent=remaining?(continuing?'Continuing automatically':recovering?'Recovering automatically':stale?'Worker not reporting':running?'Collection running':['queued','starting'].includes(d.state)?'Collection starting':['failed','recovery_failed'].includes(d.state)?'Worker needs attention':'Collection paused'):(failed||partial?'Collection finished with incomplete results':'Collection finished');
  $('banner').className='status-banner '+(remaining?(stale?'warning':running||continuing?'':d.state==='queued'?'waiting':'warning'):(failed||partial?'warning':'complete'));
- $('activity').textContent=(running||continuing)&&!stale?`${fmt.format(d.downloading||0)} active` : '';
+ $('activity').textContent=(running||continuing)&&!stale?`${fmt.format(d.downloading||0)} active${d.instances>1?' · '+fmt.format(d.active_instances||0)+' workers':''}` : '';
  $('percentage').textContent=(d.total?100*finished/d.total:0).toFixed(1)+'%';
  $('website-count').textContent=fmt.format((d.domains||[]).length);
  $('updated').textContent='Updated '+new Date(d.updated_at).toLocaleString();$('progress').value=d.total?100*finished/d.total:0;

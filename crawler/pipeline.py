@@ -109,11 +109,18 @@ class Pipeline(Fetcher):
   finally:
    with self.lock:self.live.pop(aid,None)
  def render(self,url):
+  request_guard=self.request_guard()
   def authorize(request_url,document):
-   parsed=public_url(request_url)
-   if document:
-    parser,allowed,delay,_=self.policy(request_url)
-    if not allowed or (parser and not parser.can_fetch(UA,request_url)):return False
-    with self.host_slot(parsed.hostname,delay):pass
-   return True
-  return render_isolated(url,authorize,queue_wait=self.host_queue_observer())
+   with self.guarded_requests(request_guard):
+    request_guard()
+    parsed=public_url(request_url)
+    if document:
+     parser,allowed,delay,_=self.policy(request_url)
+     if not allowed or (parser and not parser.can_fetch(UA,request_url)):return False
+     with self.host_slot(parsed.hostname,delay):pass
+    return True
+  def response(request_url,status,retry_after):
+   with self.guarded_requests(request_guard):
+    request_guard()
+    self.observe_response(request_url,status,retry_after)
+  return render_isolated(url,authorize,queue_wait=self.host_queue_observer(),response=response)

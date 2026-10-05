@@ -103,6 +103,20 @@ sys.stdin.readline();time.sleep(30)
                 run_task('render', authorize=lambda *_: time.sleep(.5) or True,
                          timeout=.2, queue_wait=lambda: 0.)
 
+    def test_browser_rate_limit_is_reported_and_acknowledged_before_child_continues(self):
+        script = '''import json,sys
+from pathlib import Path
+print(json.dumps({'type':'response','url':'https://example.org','status':429,'retry_after':'90'}),flush=True)
+reply=json.loads(sys.stdin.readline());root=Path(sys.argv[2])
+(root/'rendered.html').write_text(str(reply['received']))
+(root/'output.json').write_text(json.dumps({'url':'https://example.org'}))
+'''
+        events=[]
+        with self.child_script(script), patch('isolation.memory_pressure', return_value=False):
+            body,_=run_task('render',response=lambda *args:events.append(args))
+        self.assertEqual(events,[('https://example.org',429,'90')])
+        self.assertEqual(body,b'True')
+
     def test_memory_guard_reads_both_cgroup_versions(self):
         for paths in [
             {'memory.current': '90', 'memory.max': '100'},

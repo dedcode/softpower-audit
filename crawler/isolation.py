@@ -81,7 +81,7 @@ def stop(proc, already_signaled=False):
     proc.wait(timeout=10)
 
 
-def run_task(kind, body=None, url=None, authorize=None, timeout=90, queue_wait=None):
+def run_task(kind, body=None, url=None, authorize=None, timeout=90, queue_wait=None, response=None):
     with heavy_slot(kind), tempfile.TemporaryDirectory(prefix='article-') as directory:
         root = Path(directory)
         if body is not None:
@@ -135,8 +135,13 @@ def run_task(kind, body=None, url=None, authorize=None, timeout=90, queue_wait=N
                         selector.unregister(key.fileobj)
                         continue
                     event = json.loads(line)
-                    if not isinstance(event, dict) or event.get('type') != 'authorize':
+                    if not isinstance(event, dict) or event.get('type') not in ('authorize','response'):
                         raise IsolationError('Unexpected subprocess message')
+                    if event['type']=='response':
+                        if response is not None:response(event['url'],event['status'],event.get('retry_after'))
+                        check_guard()
+                        proc.stdin.write(json.dumps({'received':True})+'\n');proc.stdin.flush()
+                        continue
                     queued_before = queue_wait()
                     try:
                         allowed = bool(authorize(event['url'], event['document']))
@@ -182,5 +187,5 @@ def extract_isolated(body, url):
     return run_task('extract', body=body, url=url, timeout=60)
 
 
-def render_isolated(url, authorize, queue_wait=None):
-    return run_task('render', url=url, authorize=authorize, timeout=150, queue_wait=queue_wait)
+def render_isolated(url, authorize, queue_wait=None, response=None):
+    return run_task('render', url=url, authorize=authorize, timeout=150, queue_wait=queue_wait,response=response)

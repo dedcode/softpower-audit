@@ -128,7 +128,7 @@ class HostQueueTests(unittest.TestCase):
     def test_browser_document_uses_same_pacing_and_wait_accounting(self):
         self.fetcher.last['example.org'] = self.clock.now()
 
-        def renderer(url, authorize, queue_wait=None):
+        def renderer(url, authorize, queue_wait=None, response=None):
             self.assertTrue(authorize(url, True))
             self.assertEqual(queue_wait(),3.)
             return b'rendered', url

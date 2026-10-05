@@ -224,7 +224,10 @@ if __name__=='__main__':
         import verify_memory
         verify_memory.main()
     else:
-        state=Run().run()
+        if os.environ.get('CRAWL_DISTRIBUTED')=='1':
+            from distributed_worker import DistributedRun
+            state=DistributedRun().run()
+        else:state=Run().run()
         if state=='recovering_memory':
             time.sleep(10)
             os.execv(sys.executable,[sys.executable,__file__])

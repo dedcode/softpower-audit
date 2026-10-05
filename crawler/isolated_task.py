@@ -46,6 +46,12 @@ def render(root,url):
         try:
             context=browser.new_context(user_agent=UA,service_workers='block',accept_downloads=False)
             page=context.new_page();count=[0]
+            def observe_response(response):
+                if response.status not in (429,503):return
+                print(json.dumps({'type':'response','url':response.url,'status':response.status,
+                                  'retry_after':response.headers.get('retry-after')}),flush=True)
+                if not json.loads(sys.stdin.readline()).get('received'):raise RuntimeError('Response coordination failed')
+            page.on('response',observe_response)
             def guard(route):
                 req=route.request;count[0]+=1
                 if count[0]>80 or req.resource_type in ('image','media','font','websocket'):return route.abort()
