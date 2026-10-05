@@ -443,3 +443,24 @@ importer requires a finalized recovery proof matching the checkpoint inventory,
 manifest/config/progress generations, and count totals. STOP must remain until
 import succeeds. This is a one-time migration action, not a runtime cutoff.
 Validation including these recovery safeguards: 189 Python tests pass.
+
+Production migration cancelled legacy execution `softpower-crawler-d6xsv` after
+STOP because its remaining archive requests shared a serialized host queue.
+Its old workflow `2f4e634b-6042-4902-9a1b-0c3f727f84a4` then became terminal.
+Recovery replayed all 18,241 durable checkpoint events without errors and
+preserved all 18,241 terminal results, leaving 67,752 of the original 85,993 URLs
+pending. Proof: `runs/ke-full-20261003-192939/distributed/migrations/softpower-crawler-d6xsv.json`.
+
+The queue import finished with exactly 85,993 records: 18,241 terminal and 67,752
+pending. Workflow `2c1d5ed8-a876-4c57-b627-b587c1638a26` launched production
+execution `softpower-crawler-ks4gh` with four parallel tasks. Live verification
+confirmed four running instances, 192 configured article slots, 190 active
+articles in the published snapshot, and at least 33 new terminal results beyond
+the imported baseline. The public status API reports all four instances without
+an error. Evidence: `runs/ke-full-20261003-192939/distributed/production-verification.json`.
+The temporary pilot job deletion and deployed public worker label were also
+verified. The existing byte/attempt budgets and automatic continuation remain.
+A new production result was additionally checked end to end: its accepted result
+object, preserved raw response, and 3,578-character extracted text all exist;
+the text uses the expected claim-specific path. Proof:
+`runs/ke-full-20261003-192939/distributed/real-fulltext-verification.json`.
