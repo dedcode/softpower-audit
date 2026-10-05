@@ -16,7 +16,7 @@ class RetryingPipeline(Pipeline):
    'response_bytes':0,'stored_bytes':0,'pipeline':None,'retry_best':None}
   if not isinstance(state,dict) or state.get('version')!=1 or state.get('kind')!='phased-toolbox':raise ValueError('Invalid phased extraction checkpoint')
   if (state.get('article_id'),state.get('run_id'),state.get('country'))!=(aid,run,country):raise ValueError('Checkpoint belongs to a different article or run')
-  if phase not in ('publisher','archive') or state.get('next_phase')!=phase:raise ValueError('Checkpoint phase does not match requested work')
+  if phase not in ('publisher','browser','archive') or state.get('next_phase')!=phase:raise ValueError('Checkpoint phase does not match requested work')
   passes=state['completed_passes']
   if not isinstance(passes,int) or not 0<=passes<self.retry_passes:raise ValueError('Checkpoint retry passes are already exhausted')
   pipeline_checkpoint=state['pipeline']

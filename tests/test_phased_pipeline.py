@@ -1,4 +1,4 @@
-"""Publisher slots are released before durable, exhaustive archive recovery."""
+"""Publisher slots are released before durable browser and archive recovery."""
 import copy
 import gzip
 import json
@@ -65,9 +65,15 @@ class PhasedPipelineTests(unittest.TestCase):
   got={**self.missing,'status':'retrieved','http_status':200,'raw_uri':'gs://test/raw/immutable','final_url':self.item['url']}
   with patch.object(Fetcher,'fetch',return_value=got),patch.object(self.pipeline,'read',return_value=body), \
        patch('pipeline.extract',side_effect=lambda *_:{'quality':'partial','text':text}), \
-       patch.object(self.pipeline,'render',return_value=(body,self.item['url'])),patch.object(self.pipeline,'one') as lookup:
+       patch.object(self.pipeline,'render') as render,patch.object(self.pipeline,'one') as lookup:
    queued=self.pipeline.fetch_phase(self.item,'run','KE')
-  lookup.assert_not_called();worker,checkpoint=self.resume(queued)
+  lookup.assert_not_called();render.assert_not_called();self.assertEqual(queued['next_phase'],'browser')
+  browser,checkpoint=self.resume(queued,self.worker('browser-token'))
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(browser,'render',return_value=(body,self.item['url'])), \
+       patch('pipeline.extract',return_value={'quality':'partial','text':text}),patch.object(browser,'one') as lookup:
+   queued=browser.fetch_phase(self.item,'run','KE',phase='browser',checkpoint=checkpoint)
+  fetch.assert_not_called();lookup.assert_not_called();self.assertEqual(queued['next_phase'],'archive')
+  worker,checkpoint=self.resume(queued)
   self.assertEqual(checkpoint['pipeline']['best']['text'],text)
   with patch.object(Fetcher,'fetch') as fetch,patch.object(worker,'one',return_value=self.no_snapshot):
    result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
@@ -129,9 +135,11 @@ class PhasedPipelineTests(unittest.TestCase):
   text='The partial text from the first pass'
   got={**self.missing,'status':'retrieved','http_status':200,'raw_uri':'gs://test/raw/partial','final_url':self.item['url']}
   with patch.object(Fetcher,'fetch',return_value=got),patch.object(self.pipeline,'read',return_value=b'partial'), \
-       patch('pipeline.extract',return_value={'quality':'partial','text':text}), \
-       patch.object(self.pipeline,'render',side_effect=RuntimeError('temporary browser outage')):
+       patch('pipeline.extract',return_value={'quality':'partial','text':text}):
    current=self.pipeline.fetch_phase(self.item,'run','KE')
+  browser,checkpoint=self.resume(current,self.worker('browser-first'))
+  with patch.object(browser,'render',side_effect=RuntimeError('temporary browser outage')):
+   current=browser.fetch_phase(self.item,'run','KE',phase='browser',checkpoint=checkpoint)
   archive,checkpoint=self.resume(current)
   with patch.object(archive,'one',return_value=self.no_snapshot):
    retry=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
@@ -176,6 +184,97 @@ class PhasedPipelineTests(unittest.TestCase):
    with self.subTest(item=item,phase=phase),patch.object(Fetcher,'fetch') as fetch:
     with self.assertRaises(ValueError):archive.fetch_phase(item,'run','KE',phase=phase,checkpoint=checkpoint)
    fetch.assert_not_called()
+
+ def test_browser_resumes_on_fresh_worker_without_repeating_http_or_canonical_discovery(self):
+  got={**self.missing,'status':'retrieved','http_status':200,'raw_uri':'gs://test/raw/publisher','final_url':self.item['url']}
+  canonical='https://publisher.example/canonical-story'
+  with patch.object(Fetcher,'fetch',return_value=got) as fetch,patch.object(self.pipeline,'read',return_value=b'publisher'), \
+       patch('pipeline.extract',side_effect=lambda *_:{'quality':'partial','text':'Preview','discovered':[canonical]}), \
+       patch.object(self.pipeline,'render') as render:
+   queued=self.pipeline.fetch_phase(self.item,'run','KE')
+  self.assertEqual(fetch.call_count,2);render.assert_not_called();self.assertEqual(queued['next_phase'],'browser')
+  browser,checkpoint=self.resume(queued,self.worker('browser-complete'))
+  self.assertEqual(checkpoint['pipeline']['first']['final_url'],self.item['url'])
+  text='The complete article rendered in the browser';body=b'<article>complete browser body</article>'
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(browser,'render',return_value=(body,self.item['url'])) as render, \
+       patch('pipeline.extract',return_value={'quality':'candidate','text':text}),patch.object(browser,'one') as archive:
+   result=browser.fetch_phase(self.item,'run','KE',phase='browser',checkpoint=checkpoint)
+  fetch.assert_not_called();archive.assert_not_called();render.assert_called_once_with(self.item['url'])
+  self.assertEqual(result['status'],'saved');self.assertNotIn('_checkpoint',result)
+  self.assertIn('/browser-complete/rendered/',result['raw_uri']);self.assertIn('/browser-complete/extracted/',result['text_uri'])
+  self.assertEqual(result['response_bytes'],20+len(body))
+  self.assertEqual(result['stored_bytes'],8+len(gzip.compress(body))+len(gzip.compress(text.encode(),mtime=0)))
+  self.assertEqual(sum(event['stage']=='http' for event in result['attempts']),1)
+  self.assertEqual(sum(event['stage']=='publisher_url_discovery' for event in result['attempts']),1)
+  self.assertEqual(sum(event['stage']=='browser' for event in result['attempts']),1)
+
+ def test_ineligible_browser_goes_directly_to_archive_with_reason(self):
+  for status,http_status,paywall in [('unavailable',404,False),('blocked',403,False),('retrieved',200,True)]:
+   worker=self.worker(status)
+   got={**self.missing,'status':status,'http_status':http_status,
+        'raw_uri':'gs://test/raw/paywall' if paywall else None,'final_url':self.item['url']}
+   with self.subTest(status=status),patch.object(Fetcher,'fetch',return_value=got), \
+        patch.object(worker,'read',return_value=b'preview'), \
+        patch('pipeline.extract',return_value={'quality':'partial','text':'Preview','paywall':paywall}), \
+        patch.object(worker,'render') as browser,patch.object(worker,'one') as archive:
+    result=worker.fetch_phase(self.item,'run','KE')
+   browser.assert_not_called();archive.assert_not_called();self.assertEqual(result['next_phase'],'archive')
+   event=next(event for event in result['attempts'] if event['stage']=='browser')
+   self.assertEqual(event['status'],'not_applicable');self.assertTrue(event['reason'])
+
+ def test_literal_r5_archive_checkpoint_without_browser_fields_resumes_without_replay(self):
+  # Shape emitted by r5 before browser became a separate queue phase.
+  text='Previously extracted partial text'
+  checkpoint={'version':1,'kind':'phased-toolbox','article_id':self.aid,'run_id':'run','country':'KE',
+   'next_phase':'archive','completed_passes':0,'attempts':[],'response_bytes':0,'stored_bytes':0,
+   'retry_best':None,'pipeline':{'version':1,'next_phase':'archive','elapsed_seconds':10,'unresolved':False,
+    'best':{'quality':'partial','text':text,'url':self.item['url'],'raw_uri':'gs://test/runs/run/claims/old/rendered.html.gz',
+            'digest':'old-content-digest','http_status':200},
+    'result':{**self.item,'article_id':self.aid,'run_id':'run','country':'KE','status':'deferred','response_bytes':30,
+              'stored_bytes':12,'attempts':[{'stage':'http','status':'retrieved'},{'stage':'browser','status':'rendered'}]}}}
+  worker=self.worker('new-archive-claim')
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(worker,'render') as browser, \
+       patch.object(worker,'one',return_value=self.no_snapshot):
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=json.loads(json.dumps(checkpoint)))
+  fetch.assert_not_called();browser.assert_not_called();self.assertEqual(result['status'],'partial')
+  self.assertEqual(result['response_bytes'],30);self.assertEqual(sum(event['stage']=='browser' for event in result['attempts']),1)
+  self.assertEqual(gzip.decompress(self.bucket.data[result['text_uri'].removeprefix('gs://test/')]).decode(),text)
+  self.assertEqual(result['raw_uri'],checkpoint['pipeline']['best']['raw_uri'])
+
+ def test_retries_preserve_publisher_browser_archive_order_and_do_not_duplicate_counters(self):
+  current=None;phases=[]
+  got={**self.missing,'status':'retrieved','http_status':200,'raw_uri':'gs://test/raw/partial','final_url':self.item['url']}
+  for pass_index in range(2):
+   publisher=self.worker('publisher-'+str(pass_index));phases.append('publisher')
+   with patch.object(Fetcher,'fetch',return_value=got),patch.object(publisher,'read',return_value=b'partial'), \
+        patch('pipeline.extract',return_value={'quality':'partial','text':'Earlier partial'}),patch.object(publisher,'render') as render:
+    current=publisher.fetch_phase(self.item,'run','KE',checkpoint=current['_checkpoint'] if current else None)
+   render.assert_not_called();self.assertEqual(current['next_phase'],'browser')
+   browser,checkpoint=self.resume(current,self.worker('browser-'+str(pass_index)));phases.append('browser')
+   with patch.object(Fetcher,'fetch') as fetch,patch.object(browser,'render',side_effect=RuntimeError('temporary render failure')):
+    current=browser.fetch_phase(self.item,'run','KE',phase='browser',checkpoint=checkpoint)
+   fetch.assert_not_called();self.assertEqual(current['next_phase'],'archive')
+   archive,checkpoint=self.resume(current,self.worker('archive-'+str(pass_index)));phases.append('archive')
+   with patch.object(archive,'one',return_value=self.no_snapshot),patch('retrying.time.sleep') as sleep:
+    current=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+   sleep.assert_not_called()
+   if pass_index==0:self.assertEqual((current['status'],current['next_phase']),('queued','publisher'))
+  self.assertEqual(phases,['publisher','browser','archive']*2);self.assertEqual(current['status'],'failed')
+  self.assertEqual(current['response_bytes'],20)
+  self.assertEqual(sum(event['stage']=='http' for event in current['attempts']),2)
+  self.assertEqual(sum(event['stage']=='browser' for event in current['attempts']),2)
+  self.assertEqual(sum(event['stage']=='archive_lookup' for event in current['attempts']),4)
+
+ def test_browser_queue_time_does_not_consume_render_work_budget(self):
+  clock=Clock();got={**self.missing,'status':'retrieved','http_status':200,'raw_uri':'gs://test/raw/partial','final_url':self.item['url']}
+  with patch('pipeline.time.monotonic',side_effect=clock.now),patch.object(Fetcher,'fetch',return_value=got), \
+       patch.object(self.pipeline,'read',return_value=b'partial'),patch('pipeline.extract',return_value={'quality':'partial','text':'Preview'}):
+   queued=self.pipeline.fetch_phase(self.item,'run','KE')
+  clock.advance(7*24*3600);browser,checkpoint=self.resume(queued,self.worker('browser-later'))
+  with patch('pipeline.time.monotonic',side_effect=clock.now),patch.object(browser,'render',return_value=(b'full',self.item['url'])) as render, \
+       patch('pipeline.extract',return_value={'quality':'candidate','text':'Full article'}):
+   result=browser.fetch_phase(self.item,'run','KE',phase='browser',checkpoint=checkpoint)
+  render.assert_called_once();self.assertEqual(result['status'],'saved')
 
 
 if __name__=='__main__':unittest.main()

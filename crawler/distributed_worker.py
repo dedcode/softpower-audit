@@ -3,6 +3,7 @@ import gzip
 import io
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -57,7 +58,8 @@ class DistributedRun(Run):
         self.task_count = int(os.environ['CLOUD_RUN_TASK_COUNT'])
         self.identity = f'{self.execution}-{self.task_index}-{self.task_attempt}-{uuid.uuid4().hex}'
         self.client = firestore.Client(project=self.config['project'], database=os.environ['CRAWL_FIRESTORE_DATABASE'])
-        self.queue = SharedQueue(self.client, self.run_id, self.identity)
+        self.queue = SharedQueue(self.client, self.run_id, self.identity,
+                                 start_partition=(int(self.task_index), self.task_count))
         self.claims = {}
         self.deadlines = {}
         self.claim_lock = threading.Lock()
@@ -77,9 +79,93 @@ class DistributedRun(Run):
         if self.recovery.reduced_concurrency:
             self.config['workers'] = 1
 
+    def is_retired(self):
+        # Absence is normal. A network/permission failure is not absence and
+        # propagates, preventing this execution from claiming or publishing.
+        path = self.prefix + 'retired-executions/' + self.execution + '.json'
+        return self.bucket.blob(path).exists(timeout=30)
+
+    def require_not_retired(self):
+        try:
+            if self.is_retired():
+                raise RuntimeError('This crawl execution has been retired')
+        except Exception:
+            self.fetcher.abort_event.set()
+            raise
+
+    def startup_state(self):
+        if self.is_retired():
+            return 'retired'
+        if self.bucket.blob(self.prefix + 'STOP').exists(timeout=30) or self.queue.control().get('stop'):
+            return 'paused_by_operator'
+        return None
+
+    def publication_guard(self):
+        """Return a fresh owned guard generation, or None only if absent."""
+        self.require_not_retired()
+        for _ in range(4):
+            guard = self.bucket.blob(self.lease.name)
+            try:
+                guard.reload(timeout=30)
+            except NotFound:
+                return None
+            generation = guard.generation
+            try:
+                value = json.loads(guard.download_as_text(if_generation_match=generation, timeout=30))
+            except (NotFound, PreconditionFailed):
+                continue
+            try:
+                valid = (value.get('run_id') == self.run_id and value.get('execution') == self.execution
+                         and value.get('owner') == self.execution and value.get('distributed') is True
+                         and datetime.fromisoformat(value['expires_at']) > datetime.now(timezone.utc))
+            except (KeyError, TypeError, ValueError):
+                valid = False
+            if not valid:
+                self.fetcher.abort_event.set()
+                raise RuntimeError('Collection publication ownership was lost')
+            return generation
+        self.fetcher.abort_event.set()
+        raise RuntimeError('Could not verify current collection publication ownership')
+
+    def publication_gate(self):
+        """Allow writes only for the current cohort; terminal replay is read-only.
+
+        A final peer may already have published and released the guard. Accept
+        that exact completed cohort snapshot without publishing again or turning
+        a successfully finished peer into a failed native task.
+        """
+        try:
+            if self.publication_guard() is not None:
+                return None
+            snapshot = json.loads(self.bucket.blob(self.prefix + 'progress.json').download_as_text(timeout=30))
+            records = latest_workers(snapshot.get('workers', []), self.task_count)
+            totals = [snapshot.get(field) for field in ('total', 'processed', 'pending')]
+            valid_counts = (all(type(value) is int and value >= 0 for value in totals)
+                            and totals[1] + totals[2] == totals[0]
+                            and (snapshot.get('state') != 'completed' or totals[2] == 0))
+            valid = (valid_counts and snapshot.get('run_id') == self.run_id and snapshot.get('execution') == self.execution
+                     and snapshot.get('state') in TERMINAL_WORKERS and snapshot.get('downloading') == 0
+                     and len(records) == self.task_count
+                     and all(record.get('execution') == self.execution and record.get('state') in TERMINAL_WORKERS for record in records)
+                     and aggregate_state(snapshot, records, self.task_count) == snapshot.get('state'))
+            if not valid or self.publication_guard() is not None:
+                raise RuntimeError('Collection publication guard is absent without a verified terminal snapshot')
+            self.summary_snapshot = snapshot
+            self.last_publish = time.monotonic()
+            return snapshot
+        except Exception:
+            self.fetcher.abort_event.set()
+            raise
+
     def lease_update(self, initial=False):
+        reservation_deadline = time.monotonic() + 180
         # One cohort guard, shared only by tasks of the same Cloud execution.
-        for _ in range(12):
+        conflicts = 0
+        while conflicts < 12:
+            self.require_not_retired()
+            if initial and (self.bucket.blob(self.prefix + 'STOP').exists(timeout=30) or self.queue.control().get('stop')):
+                self.fetcher.abort_event.set()
+                raise RuntimeError('The collection is paused before startup')
             # Blob.reload() retains a previously loaded generation. A peer may
             # replace that generation, so every read must start from a fresh
             # handle to the current object, never a cached generation handle.
@@ -93,11 +179,28 @@ class DistributedRun(Run):
                 except (NotFound, PreconditionFailed):
                     # With object versioning disabled, a peer replacing the
                     # generation between reload and download can return 404.
+                    conflicts += 1
                     time.sleep(.1)
                     continue
                 same = (old.get('execution') == self.execution and old.get('run_id') == self.run_id
                         and old.get('owner') == self.execution and old.get('distributed') is True)
                 expires_at = datetime.fromisoformat(old['expires_at'])
+                token = old.get('handover_id')
+                reservation = (initial and old.get('run_id') == self.run_id
+                               and isinstance(token, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', token)
+                               and old.get('owner') == old.get('execution') == 'handover-' + token
+                               and old.get('distributed') is True
+                               and type(old.get('task_count')) is int and old['task_count'] > 0)
+                if reservation:
+                    remaining = reservation_deadline - time.monotonic()
+                    if expires_at <= datetime.now(timezone.utc) or remaining <= 0:
+                        self.fetcher.abort_event.set()
+                        raise RuntimeError('Handover reservation was not transferred within 180 seconds or expired')
+                    # The orchestrator can identify this execution before it
+                    # starts requests. Waiting is not a failed CAS attempt and
+                    # must not consume native retries or reduce worker capacity.
+                    time.sleep(min(2., remaining))
+                    continue
                 if not same and expires_at > datetime.now(timezone.utc):
                     raise RuntimeError('Another crawl execution holds the collection lease')
                 if not initial and not same:
@@ -113,8 +216,10 @@ class DistributedRun(Run):
                 if not initial and self.last_heartbeat:
                     raise RuntimeError('Collection lease disappeared') from None
             except PreconditionFailed:
+                conflicts += 1
                 time.sleep(.1)
                 continue
+            self.require_not_retired()
             payload = {'owner': self.execution, 'execution': self.execution, 'run_id': self.run_id,
                        'task_count': self.task_count, 'distributed': True,
                        'expires_at': (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()}
@@ -123,6 +228,7 @@ class DistributedRun(Run):
                                               if_generation_match=generation, timeout=30)
                 return
             except PreconditionFailed:
+                conflicts += 1
                 time.sleep(.1)
         raise RuntimeError('Could not renew collection execution lease')
 
@@ -170,9 +276,9 @@ class DistributedRun(Run):
             self.fetcher.request_context.output_scope = None
 
     def claim_available(self):
-        """Archive waits get a small separate pool, never all article slots.
+        """Slow recovery stages get separate pools, never all article slots.
 
-        Both phases remain in the same durable queue. A handoff frees a publisher
+        All phases remain in the same durable queue. A handoff frees a publisher
         slot immediately; it does not finish the article or consume a retry.
         """
         from collections import Counter
@@ -181,10 +287,10 @@ class DistributedRun(Run):
         capacity = self.config['workers'] - len(active)
         if capacity <= 0:
             return []
-        archive_limit = min(2, max(1, self.config['workers'] // 8))
-        publisher_limit = max(1, self.config['workers'] - archive_limit)
+        recovery_limit = min(2, max(1, self.config['workers'] // 8))
+        publisher_limit = max(1, self.config['workers'] - 2 * recovery_limit)
         selected = []
-        for phase, limit in (('publisher', publisher_limit), ('archive', archive_limit)):
+        for phase, limit in (('publisher', publisher_limit), ('browser', recovery_limit), ('archive', recovery_limit)):
             phase_claims = [claim for claim in active if claim.phase == phase]
             available = min(capacity, max(0, limit - len(phase_claims)))
             if not available:
@@ -227,6 +333,9 @@ class DistributedRun(Run):
             raise
 
     def publish(self, error=None, _attempt=0):
+        previous_terminal = self.publication_gate()
+        if previous_terminal is not None:
+            return previous_terminal
         # Reading the generation first prevents a delayed writer replacing a newer snapshot.
         target = self.bucket.blob(self.prefix + 'progress.json')
         generation = 0
@@ -255,6 +364,9 @@ class DistributedRun(Run):
                        limits={key: self.config.get(key) for key in ('workers', 'per_outlet_workers',
                                'max_runtime_seconds', 'max_response_bytes', 'max_total_attempts')})
         summary['limits']['workers'] = self.configured_workers
+        previous_terminal = self.publication_gate()
+        if previous_terminal is not None:
+            return previous_terminal
         self.summary_snapshot = summary
         self.last_publish = time.monotonic()
         try:
@@ -282,6 +394,12 @@ class DistributedRun(Run):
             # upload_from_string pins target.generation. A peer may already
             # have replaced it, so read the latest object through a fresh handle.
             latest = json.loads(self.bucket.blob(self.prefix + 'progress.json').download_as_text())
+            previous_terminal = self.publication_gate()
+            if previous_terminal is not None:
+                return previous_terminal
+            if latest.get('run_id') != self.run_id or latest.get('execution') != self.execution:
+                self.fetcher.abort_event.set()
+                raise RuntimeError('Progress snapshot belongs to a different collection execution')
             try:
                 public.upload_from_string(json.dumps(latest, separators=(',', ':')), content_type='application/json',
                                           if_generation_match=public_generation, timeout=30)
@@ -304,7 +422,7 @@ class DistributedRun(Run):
         if result.get('status') == 'queued':
             self.request_guard(claim.article_id)
             phase = result['next_phase']
-            if phase not in ('publisher', 'archive'):
+            if phase not in ('publisher', 'browser', 'archive'):
                 raise ValueError('Invalid next extraction phase')
             path = self.prefix + 'distributed/checkpoints/' + claim.article_id + '/' + claim.token + '.json.gz'
             envelope = {'article_id': claim.article_id, 'run_id': self.run_id,
@@ -373,12 +491,18 @@ class DistributedRun(Run):
         self.last_export = time.monotonic()
 
     def release_cohort_lease(self, summary):
-        if summary['state'] not in TERMINAL_WORKERS:
+        releasable = TERMINAL_WORKERS - {'failed', 'recovery_failed'}
+        if summary['state'] not in releasable:
             return
         tasks = latest_workers(summary['workers'], self.task_count)
-        if len(tasks) != self.task_count or any(record.get('state') not in TERMINAL_WORKERS for record in tasks):
+        if len(tasks) != self.task_count or any(record.get('state') not in releasable for record in tasks):
             return
         for _ in range(12):
+            # A newer native attempt may have started since this summary was
+            # published. Never delete its guard based on stale terminal peers.
+            current = latest_workers(self.queue.list_workers(execution=self.execution), self.task_count)
+            if len(current) != self.task_count or any(record.get('state') not in releasable for record in current):
+                return
             self.lease = self.bucket.blob(self.lease.name)
             try:
                 self.lease.reload()
@@ -409,6 +533,10 @@ class DistributedRun(Run):
         if not 0 < rotation < float('inf'):
             raise ValueError('CRAWL_ROTATE_SECONDS must be positive and finite')
         try:
+            startup_state = self.startup_state()
+            if startup_state is not None:
+                print(json.dumps({'run_id': self.run_id, 'task_index': self.task_index, 'state': startup_state}), flush=True)
+                return startup_state
             self.lease_update(initial=True)
             control = self.queue.control()
             if control.get('state') not in ('ready', 'running', 'continuing'):
@@ -544,8 +672,9 @@ class DistributedRun(Run):
             # Update the worker document without trying to reclaim a lost cohort
             # lease. A failed native task can then be replaced safely by Cloud Run.
             try:
-                self.queue.heartbeat_worker(worker_state={'state': 'failed'})
-                self.publish(type(exc).__name__ + ': ' + str(exc)[:500])
+                if self.publication_gate() is None:
+                    self.queue.heartbeat_worker(worker_state={'state': 'failed'})
+                    self.publish(type(exc).__name__ + ': ' + str(exc)[:500])
             except Exception:
                 pass
             raise

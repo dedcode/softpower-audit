@@ -11,6 +11,7 @@ import google.auth
 from google.auth.transport.requests import AuthorizedSession, Request
 from google.cloud import storage
 from google.api_core.exceptions import NotFound, PreconditionFailed
+from crawl_handover import validate_reservation
 
 ROOT=Path(__file__).resolve().parents[1]
 PROJECT='citygraph';REGION='us-central1';BUCKET=PROJECT+'-softpower-crawl'
@@ -80,7 +81,7 @@ def provision(session,job):
         policy.bindings.append(binding);bucket.set_iam_policy(policy)
 
 
-def start(session,workflow,run_id):
+def start(session,workflow,run_id,*,handover_id=None):
     # A launch is explicit, once per collection. The workflow loops only after
     # a checkpointed platform rollover, never on a wall-clock schedule.
     parent=f'projects/{PROJECT}/locations/{REGION}/workflows/{workflow}'
@@ -101,7 +102,9 @@ def start(session,workflow,run_id):
         params['pageToken']=page['nextPageToken']
     bucket=storage.Client(project=PROJECT).bucket(BUCKET)
     lease=bucket.blob('control/worker-lease.json')
-    if lease.exists():raise RuntimeError('A crawler lease exists; inspect the current execution before starting another controller')
+    if handover_id is not None:
+        reservation=validate_reservation(bucket,run_id,handover_id)
+    elif lease.exists():raise RuntimeError('A crawler lease exists; inspect the current execution before starting another controller')
     # List + create alone is racy and a timed-out POST may already have created
     # an execution. Retain a generation-guarded launch record until its known
     # execution is terminal; an ambiguous request must never be blindly retried.
@@ -124,9 +127,16 @@ def start(session,workflow,run_id):
         # execution propagates above, leaving the claim untouched.
         generation=0
     payload={'run_id':run_id,'workflow':workflow,'launch_id':uuid.uuid4().hex,'created_at':datetime.now(timezone.utc).isoformat(),'state':'creating'}
+    if handover_id is not None:payload['handover_id']=handover_id
     try:claim.upload_from_string(json.dumps(payload),content_type='application/json',if_generation_match=generation,timeout=30)
     except PreconditionFailed as exc:raise RuntimeError('Another launcher claimed this coordinator; inspect executions instead of creating a duplicate') from exc
     generation=claim.generation
+    if handover_id is not None:
+        # Preserve the held guard through creation. A changed reservation means
+        # another operator intervened; retain the launch claim and fail closed.
+        current=validate_reservation(bucket,run_id,handover_id)
+        if current['generation']!=reservation['generation']:
+            raise RuntimeError('Handover reservation changed during coordinator launch')
     response=checked(session.post(url,json={'argument':json.dumps({'run_id':run_id})},timeout=60))
     if not execution_belongs_to_workflow(response.get('name'),workflow):
         raise RuntimeError('Coordinator creation returned no verifiable execution; the launch claim was retained')
@@ -141,8 +151,10 @@ def main():
     parser.add_argument('--deploy',action='store_true');parser.add_argument('--execute',action='store_true')
     parser.add_argument('--workflow',default='softpower-crawl-continuation')
     parser.add_argument('--job',default='softpower-crawler');parser.add_argument('--run-id')
+    parser.add_argument('--handover-id',help='Start while this exact atomic handover reservation remains held')
     args=parser.parse_args()
     if args.execute and not args.run_id:parser.error('--execute requires --run-id')
+    if args.handover_id and not args.execute:parser.error('--handover-id requires --execute')
     if not args.deploy and not args.execute:parser.error('Specify --deploy and/or --execute')
     credentials,_=google.auth.default();session=AuthorizedSession(credentials)
     if args.deploy:
@@ -156,7 +168,7 @@ def main():
                 '--source='+str(ROOT/'workflows/continue-crawl.yaml'),
                 '--set-env-vars='+f'CRAWL_JOB_NAME={args.job},CRAWL_BUCKET={BUCKET},CRAWL_PROJECT={PROJECT},CRAWL_REGION={REGION}',
                 '--format=json(name,revisionId,state)','--quiet'],check=True)
-    if args.execute:start(session,args.workflow,args.run_id)
+    if args.execute:start(session,args.workflow,args.run_id,handover_id=args.handover_id)
 
 
 if __name__=='__main__':main()

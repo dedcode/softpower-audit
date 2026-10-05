@@ -85,28 +85,33 @@ class DistributedPhasesTests(unittest.TestCase):
             run.fetch_claim(item)
         run.fetcher.fetch_phase.assert_not_called()
 
-    def test_archive_backlog_cannot_consume_publisher_capacity(self):
+    def test_recovery_backlog_cannot_consume_publisher_capacity(self):
         run, item = self.prepare('archive')
         run.config['workers'] = 48
         other = claim()
         other.article_id = 'second'
         other.phase = 'archive'
         run.claims[other.article_id] = other
+        for index in range(2):
+            browser = claim()
+            browser.article_id = 'browser-' + str(index)
+            browser.phase = 'browser'
+            run.claims[browser.article_id] = browser
         run.queue.claim.return_value = []
         run.claim_available()
         run.queue.claim.assert_called_once()
         args = run.queue.claim.call_args.kwargs
         self.assertEqual(args['phase'], 'publisher')
-        self.assertEqual(args['limit'], 46)
+        self.assertEqual(args['limit'], 44)
         self.assertEqual(dict(args['inflight']), {})
 
-    def test_idle_worker_reserves_small_archive_pool_within_48(self):
+    def test_idle_worker_reserves_small_recovery_pools_within_48(self):
         run = bare_run()
         run.config['workers'] = 48
         run.queue.claim.return_value = []
         run.claim_available()
         calls = [call.kwargs for call in run.queue.claim.call_args_list]
-        self.assertEqual([(c['phase'], c['limit']) for c in calls], [('publisher', 46), ('archive', 2)])
+        self.assertEqual([(c['phase'], c['limit']) for c in calls], [('publisher', 44), ('browser', 2), ('archive', 2)])
 
     def test_memory_reduced_worker_never_exceeds_single_slot(self):
         run = bare_run()
@@ -115,9 +120,27 @@ class DistributedPhasesTests(unittest.TestCase):
         self.assertEqual(run.claim_available(), [item])
         run.queue.claim.assert_called_once()
         run.queue.claim.reset_mock(side_effect=True)
-        run.queue.claim.side_effect = [[], [item]]
+        run.queue.claim.side_effect = [[], [], [item]]
         self.assertEqual(run.claim_available(), [item])
-        self.assertEqual([c.kwargs['phase'] for c in run.queue.claim.call_args_list], ['publisher', 'archive'])
+        self.assertEqual([c.kwargs['phase'] for c in run.queue.claim.call_args_list], ['publisher', 'browser', 'archive'])
+
+    def test_browser_backlog_does_not_block_archive_admission(self):
+        run = bare_run()
+        run.config['workers'] = 48
+        for index in range(44):
+            item = claim()
+            item.article_id = 'publisher-' + str(index)
+            run.claims[item.article_id] = item
+        for index in range(2):
+            item = claim()
+            item.article_id = 'browser-' + str(index)
+            item.phase = 'browser'
+            run.claims[item.article_id] = item
+        run.queue.claim.return_value = []
+        run.claim_available()
+        run.queue.claim.assert_called_once()
+        self.assertEqual(run.queue.claim.call_args.kwargs['phase'], 'archive')
+        self.assertEqual(run.queue.claim.call_args.kwargs['limit'], 2)
 
 
 if __name__ == '__main__':

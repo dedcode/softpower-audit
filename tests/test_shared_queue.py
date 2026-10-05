@@ -53,7 +53,7 @@ class Query:
         self.database = database
         self.path = path
         self.filters = filters or []
-        self.ordering = ordering
+        self.ordering = ordering or ()
         self.maximum = maximum
         self.cursor = cursor
 
@@ -69,7 +69,7 @@ class Query:
         return self.clone(filters=self.filters + [filter])
 
     def order_by(self, field):
-        return self.clone(ordering=field)
+        return self.clone(ordering=(*self.ordering, field))
 
     def limit(self, value):
         return self.clone(maximum=value)
@@ -103,7 +103,10 @@ class Query:
                     records.append(Snapshot(Reference(self.database, path), value, self.database.versions[path]))
             def key(snapshot):
                 if self.ordering:
-                    return (snapshot.to_dict()[self.ordering], snapshot.id)
+                    value = snapshot if isinstance(snapshot, dict) else snapshot.to_dict()
+                    reference = value['__name__'] if isinstance(snapshot, dict) else snapshot.reference
+                    values = tuple(reference.id if field == '__name__' else value[field] for field in self.ordering)
+                    return values if '__name__' in self.ordering else (*values, reference.id)
                 return snapshot.id
             records.sort(key=key)
             if self.cursor is not None:
@@ -510,7 +513,7 @@ class SharedQueueTests(unittest.TestCase):
         self.assertEqual(archive.article_id, first.article_id)
         self.assertEqual(self.database.query_results, 1)
         self.assertEqual(len(self.queue.claim(48)), 48)
-        self.assertEqual(set(self.queue._cursors), {'publisher', 'archive'})
+        self.assertEqual(set(self.queue._cursors), {'publisher', 'browser', 'archive'})
         self.assertNotEqual(self.queue._cursors['publisher'].id, self.queue._cursors['archive'].id)
 
     def test_archive_concurrent_claims_have_unique_ownership(self):
@@ -528,6 +531,79 @@ class SharedQueueTests(unittest.TestCase):
         self.assertTrue(all(claim.phase == 'archive' and claim.checkpoint_uri for claim in claims))
         summary = self.queue.summary()
         self.assertEqual((summary['processed'], summary['publisher_remaining'], summary['archive_remaining']), (0, 0, 96))
+
+    def test_three_phase_round_trip_preserves_budget_counts_and_never_exports_queued_work(self):
+        self.seed([article(0)])
+        publisher = self.queue.claim(1)[0]
+        cumulative = result(publisher.item, 'queued')
+        self.queue.handoff(publisher, 'gs://bucket/publisher', next_phase='browser', retry_at=0, result=cumulative)
+        summary = self.queue.summary()
+        self.assertEqual((summary['publisher_remaining'], summary['browser_remaining'], summary['archive_remaining']), (0, 1, 0))
+        browser = self.queue.claim(1, phase='browser')[0]
+        self.assertEqual(browser.checkpoint_uri, 'gs://bucket/publisher')
+        cumulative['attempts'].append({'http_attempts': [{}, {}]})
+        cumulative.update(response_bytes=210, stored_bytes=90)
+        self.queue.handoff(browser, 'gs://bucket/browser', next_phase='archive', retry_at=0, result=cumulative)
+        summary = self.queue.summary()
+        self.assertEqual((summary['publisher_remaining'], summary['browser_remaining'], summary['archive_remaining']), (0, 0, 1))
+        archive = self.queue.claim(1, phase='archive')[0]
+        cumulative['attempts'].append({'http_attempts': [{}]})
+        cumulative.update(response_bytes=300, stored_bytes=140)
+        self.queue.handoff(archive, 'gs://bucket/archive', next_phase='publisher', retry_at=0, result=cumulative)
+        summary = self.queue.summary()
+        self.assertEqual((summary['processed'], summary['publisher_remaining'], summary['browser_remaining'], summary['archive_remaining']), (0, 1, 0, 0))
+        self.assertEqual((summary['attempts'], summary['retries'], summary['response_bytes'], summary['stored_bytes']), (6, 3, 300, 140))
+        self.assertEqual(self.queue.export_pending(), [])
+        publisher = self.queue.claim(1)[0]
+        self.assertEqual(publisher.checkpoint_uri, 'gs://bucket/archive')
+        cumulative.update(status='saved', response_bytes=350, stored_bytes=175)
+        self.assertTrue(self.queue.complete(publisher, cumulative, 'gs://bucket/final'))
+        summary = self.queue.summary()
+        self.assertEqual((summary['processed'], summary['attempts'], summary['response_bytes'], summary['stored_bytes']), (1, 6, 350, 175))
+        self.assertEqual((summary['publisher_remaining'], summary['browser_remaining'], summary['archive_remaining']), (0, 0, 0))
+        self.assertEqual(len(self.queue.export_pending()), 1)
+
+    def test_browser_phase_uses_its_own_due_index_and_survives_expiry_and_release(self):
+        self.seed([article(i, f'news-{i % 8}.ke') for i in range(50)])
+        publisher = self.queue.claim(1)[0]
+        self.queue.handoff(publisher, 'gs://bucket/publisher', next_phase='browser', retry_at=self.now + 25, result=result(publisher.item, 'queued'))
+        self.assertEqual(self.queue.claim(1, phase='browser'), [])
+        self.assertEqual(self.queue.claim(1, phase='archive'), [])
+        self.now += 25
+        self.database.query_results = 0
+        browser = self.queue.claim(1, phase='browser')[0]
+        self.assertEqual(self.database.query_results, 1)
+        row = self.queue.articles.document(browser.article_id).get().to_dict()
+        self.assertIn('browser_due_at', row)
+        self.assertNotIn('due_at', row)
+        self.assertNotIn('archive_due_at', row)
+        self.assertEqual(self.queue.heartbeat([browser]), set())
+        self.now += 601
+        other = self.make_queue('browser-replacement')
+        replacement = other.claim(1, phase='browser')[0]
+        self.assertFalse(self.queue.release(browser))
+        self.assertEqual(replacement.checkpoint_uri, 'gs://bucket/publisher')
+        self.assertTrue(other.release(replacement))
+        final = self.queue.claim(1, phase='browser')[0]
+        self.assertTrue(self.queue.complete(final, result(final.item), 'gs://bucket/browser-final'))
+        summary = self.queue.summary()
+        self.assertEqual((summary['browser_remaining'], summary['archive_remaining'], summary['publisher_remaining'], summary['processed']), (0, 0, 49, 1))
+        self.assertNotIn('browser_due_at', self.queue.articles.document(final.article_id).get().to_dict())
+
+    def test_missing_browser_counter_on_old_shards_needs_no_migration(self):
+        self.seed([article(0)])
+        for index in range(SHARDS):
+            reference = self.queue.stats.document(f'{index:02d}')
+            old = reference.get().to_dict()
+            old.pop('browser_remaining')
+            reference.set(old)
+        self.assertEqual(self.queue.summary()['browser_remaining'], 0)
+        claim = self.queue.claim(1)[0]
+        self.queue.handoff(claim, 'gs://bucket/publisher', next_phase='browser', retry_at=0, result=result(claim.item, 'queued'))
+        browser = self.queue.claim(1, phase='browser')[0]
+        self.assertEqual(self.queue.summary()['browser_remaining'], 1)
+        self.assertTrue(self.queue.complete(browser, result(browser.item), 'gs://bucket/browser-final'))
+        self.assertEqual(self.queue.summary()['browser_remaining'], 0)
 
     def test_release_preserves_unfinished_work_for_another_instance(self):
         self.seed([article(0)])

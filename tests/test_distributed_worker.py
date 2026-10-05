@@ -46,6 +46,7 @@ def bare_run():
     run.summary_snapshot = None
     run.worker_state = 'running'
     run.queue = Mock()
+    run.queue.control.return_value = {'state': 'ready', 'stop': False}
     run.bucket = Mock(name='bucket')
     run.bucket.name = 'private-test'
     run.bq = Mock()
@@ -54,7 +55,12 @@ def bare_run():
     run.recovery = SimpleNamespace(attempt_elapsed=0, reserve_restart=Mock(return_value=True))
     run.lease = Mock()
     run.lease.name = 'control/test-lease.json'
+    run.lease.generation = 1
+    run.lease.download_as_text.return_value = json.dumps({'execution': run.execution, 'run_id': run.run_id,
+        'owner': run.execution, 'distributed': True,
+        'expires_at': (distributed.datetime.now(distributed.timezone.utc) + distributed.timedelta(minutes=10)).isoformat()})
     default_blob = run.bucket.blob.return_value
+    default_blob.exists.return_value = False
     run.bucket.blob.side_effect = lambda name: run.lease if name == 'control/test-lease.json' else default_blob
     return run
 
@@ -70,13 +76,13 @@ class GenerationBlob:
         self.name = name
         self.generation = None
 
-    def reload(self):
+    def reload(self, **kwargs):
         current = self.bucket.current
         if not current or self.generation not in (None, current['generation']):
             raise NotFound('Cached generation no longer exists')
         self.generation = current['generation']
 
-    def download_as_text(self, if_generation_match=None):
+    def download_as_text(self, if_generation_match=None, **kwargs):
         if self.bucket.read_conflict:
             error = self.bucket.read_conflict
             self.bucket.read_conflict = None
@@ -107,6 +113,13 @@ class GenerationBucket:
         self.handles = []
 
     def blob(self, name):
+        if not name.startswith('control/'):
+            # STOP and retirement are separate, absent objects in these lease fixtures.
+            missing = Mock()
+            missing.exists.return_value = False
+            missing.reload.side_effect = NotFound('Absent control marker')
+            missing.download_as_text.side_effect = NotFound('Absent control marker')
+            return missing
         blob = GenerationBlob(self, name)
         self.handles.append(blob)
         return blob
@@ -123,11 +136,18 @@ class AggregateTests(unittest.TestCase):
         original.generation = 4
         original.download_as_text.side_effect = NotFound('Generation replaced by a peer')
         fresh = Mock()
-        fresh.download_as_text.return_value = json.dumps({'processed': 3, 'state': 'running'})
+        fresh.download_as_text.return_value = json.dumps({'processed': 3, 'state': 'running',
+                                                        'run_id': run.run_id, 'execution': run.execution})
         public = Mock()
         public.generation = 5
         reads = []
+        marker = Mock()
+        marker.exists.return_value = False
         def blob(path):
+            if path == run.lease.name:
+                return run.lease
+            if '/retired-executions/' in path:
+                return marker
             if path == 'progress/ZZ.json':
                 return public
             reads.append(path)
@@ -188,7 +208,8 @@ class AggregateTests(unittest.TestCase):
                 raise PreconditionFailed('A peer published its older running snapshot')
         target.upload_from_string.side_effect = uploading
         run.lease.download_as_text.return_value = json.dumps({'execution': run.execution,
-            'run_id': run.run_id, 'owner': run.execution, 'distributed': True})
+            'run_id': run.run_id, 'owner': run.execution, 'distributed': True,
+            'expires_at': (distributed.datetime.now(distributed.timezone.utc) + distributed.timedelta(minutes=10)).isoformat()})
         run.lease.delete.side_effect = lambda **kwargs: events.append('release')
         summary = run.publish()
         run.release_cohort_lease(summary)
@@ -245,6 +266,7 @@ class FencingTests(unittest.TestCase):
         # One shared guard is sufficient; the other tasks do not rewrite it.
         self.assertEqual(bucket.current['generation'], 1)
         self.assertEqual(len(bucket.handles), 6)
+        first.queue.list_workers.return_value = [worker_record(0, 'continuing'), worker_record(1, 'continuing')]
         first.release_cohort_lease({'state': 'continuing', 'workers': [worker_record(0, 'continuing'), worker_record(1, 'continuing')]})
         self.assertIsNone(bucket.current)
 
@@ -320,6 +342,7 @@ class FencingTests(unittest.TestCase):
     def test_cohort_release_requires_exact_owner_and_run(self):
         run = bare_run()
         summary = {'state': 'continuing', 'workers': [worker_record(0, 'continuing'), worker_record(1, 'continuing')]}
+        run.queue.list_workers.return_value = summary['workers']
         for value in ({'execution': run.execution, 'run_id': 'other', 'owner': run.execution, 'distributed': True},
                       {'execution': run.execution, 'run_id': run.run_id, 'owner': 'other', 'distributed': True}):
             run.lease.download_as_text.return_value = json.dumps(value)

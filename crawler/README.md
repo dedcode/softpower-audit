@@ -473,14 +473,16 @@ The existing job template is now configured with `taskCount=10` and
 image remains `distributed-20261005-r3`; only the task count and parallelism were
 changed. Regional CPU/memory quota checks permit this deployment.
 
-For an explicit distributed resize, STOP and cancel the old execution, then wait
-until that execution and its continuation workflow are terminal. The new
+The initial distributed resize used STOP and cancellation, then waited
+until that execution and its continuation workflow were terminal. The
 `scripts/release_distributed_crawl_for_scaleover.py` helper verifies the exact old
 cohort, the STOP generation, and the ready target template before releasing only
 the old global lease. Article claims, completed results, counters, export outbox,
 and host cooldowns stay unchanged. Old claims expire normally while the new
 instances work on other ready URLs. Remove only the verified STOP and start the
-normal continuation controller. No queue reimport is required.
+normal continuation controller. No queue reimport was required. This historical
+guard-deletion handover is superseded by the atomic reservation procedure below:
+Cloud Run cancellation alone did not prove that every late task retry had stopped.
 
 Ten scaleover safety tests pass. An isolated live test with ten clients completed
 all 30 simultaneous join/renew operations and cleaned up its test lease. Proof:
@@ -572,3 +574,138 @@ Rollover and launch evidence are under
 `runs/ke-full-20261003-192939/distributed/phased-r5/`.
 The last 586 seconds before stopping r4 produced 56 full texts, approximately
 344 saved texts/hour; this is an observed window, not a controlled benchmark.
+
+r5 verification observed 251 new saved texts in 304 seconds (2,969/hour), with
+all ten instances healthy and at most 20 archive claims. It verified a real
+saved original/text pair and a queued archive checkpoint. However, browser
+stages grew from 16 to 107 during the sample: rendering still occupied ordinary
+publisher slots. Evidence: `distributed/phased-r5/verification.json` under the
+same run prefix.
+
+Image `distributed-20261005-r6` also separates browser rendering. Each instance
+now admits up to 44 publisher claims, two browser claims, and two archive claims,
+within the same 48-slot limit. Only one actual Chromium process family per
+instance may run; the second browser claim waits without taking a heavy-process
+slot. Publisher HTTP/canonical extraction hands off eligible rendering with its
+response metadata and best candidate preserved. Browser recovery either saves
+the text or hands it to archives. Ineligible browser work records its reason
+and goes directly to archives. No recovery tool is removed.
+
+The third phase uses indexed `browser_due_at` and the `browser_remaining`
+counter, with legacy defaults of zero. r5 archive checkpoints remain valid and
+skip already-attempted browser work. All 244 Python tests pass, including literal
+r5 checkpoint compatibility, three-phase retries, queue-time exclusion, and
+independent recovery caps. A live ten-client test completed 20 synthetic
+publisher/browser/archive sequences with exactly-once metrics. Evidence:
+`runs/verify-distributed-three-phases-20261005-181944-45b14d/verification.json`.
+After browser-phase records exist, rollback must use a browser-aware worker or
+a forward fix: unchanged r5 cannot claim `browser_due_at` work. Never reseed the
+queue or discard these checkpoints during a rollback.
+
+### Atomic handover and retired-worker fencing
+
+The first r6 launch exposed late retries from the cancelled r5 execution.
+Although Cloud Run reported the old execution cancelled, replacement task
+attempts subsequently reclaimed the deleted cohort guard. That blocked all ten
+r6 tasks at startup and triggered their conservative retry fallback. This was a
+handover error, not a memory failure or a phase-processing failure. Both
+executions were retired; their completed results and pending checkpoints were
+preserved, and a held reservation fenced them out.
+
+`scripts/crawl_handover.py` replaces the exact old guard with a 30-minute
+reservation, then transfers it directly to the verified new execution with a
+10-minute expiry. There is no unowned interval. Coordinator `start()` accepts
+the matching `handover_id`, still using its existing launch deduplication and
+generation checks. The caller keeps STOP and the queue stop flag set while
+retiring old executions, creates immutable markers at
+`runs/<run_id>/retired-executions/<execution>.json`, verifies the ready job and
+terminal old controllers, then clears its own stop and launches while holding
+the reservation. It verifies the new execution's run/image/task identity and
+transfers the reservation before its containers start. Retain launch and
+transfer proofs; never blindly repeat an ambiguous creation request.
+
+r7 workers check STOP and retirement before acquiring a guard, and check
+retirement on renewal. Only the current live owner may publish progress, with
+ownership rechecked before private and public writes. A peer may read an already
+verified terminal snapshot after final guard release without writing again.
+Late retired tasks cannot restart crawling or replace the current status.
+
+A live isolated guard test rejected 20 stale-client reservation attempts across
+reservation and transfer, while maintaining continuous ownership. Production
+queue state was untouched. Proof:
+`runs/verify-distributed-handover-20261005-183853-332ba8/verification.json`.
+
+r8 workers also wait up to three minutes if they start while the same run's
+handover reservation is still held. Waiting does not consume native retries or
+reduce article capacity; STOP and retirement remain enforced throughout.
+Terminal workers reread the latest task attempts before releasing the cohort
+guard, and failed cohorts retain ownership for native retries. These checks
+prevent a late attempt or stale terminal snapshot from reducing the replacement
+fleet to one slot per task. All 280 Python tests pass. The r8 uploaded source was
+verified byte-for-byte against the tested worker, pipeline, retry, and queue
+modules.
+
+The r8 build `1d66ca1a-5d50-4e6b-9f53-0a7355465e3f` succeeded. Controller
+`dd73815a-9105-480f-bc74-4a07131ee0f3` launched execution
+`softpower-crawler-chplt` at 18:55:47 UTC. The continuously held reservation
+was assigned to that execution after verifying its exact build digest and ten
+tasks. The same queue resumed with all 21,305 completed results, including
+17,383 saved full texts. Launch evidence is under
+`runs/ke-full-20261003-192939/distributed/phased-r8/`.
+
+r8's first five-minute window saved 53 full texts (615/hour), while the next
+window saved 275 in 309 seconds (3,205/hour). All ten tasks stayed on native
+attempt zero with 48 slots each; browser and archive claims stayed at or below
+20 each. A real saved original/text pair and both durable recovery queues were
+verified. Proofs are `verification.json` and `steady-verification.json` under
+the r8 prefix. These are observed windows with changing outlet mixes, not a
+controlled scaling benchmark.
+
+### Spread initial publisher scans across the queue
+
+The slow restart exposed a second admission bottleneck: every task initially
+scanned the beginning of the same `due_at` index. A sample of its first 2,000
+ready publisher rows contained only six outlets, while later hash ranges had
+28–31 outlets per 250-row sample. The per-instance outlet cap filled waits for
+the same slow sites before bounded cursor pagination reached other available
+websites. Current robots rules also require 20 seconds for Kenya Star and ten
+seconds for Capital FM's redirected host; those limits remain enforced.
+
+r9 gives each task an initial publisher cursor at the midpoint of its equal
+SHA256 stratum, using the existing `due_at` and document-ID ordering. These are
+starting points, not fixed partitions: normal pagination and wrap still visit
+every record, including lower IDs and due retries. Browser/archive scheduling is
+unchanged. Refills still read at most two bounded pages; no new index or article
+rewrite is required. All 287 Python tests pass, including distinct starting
+points, access beyond a saturated front, wrap completeness, future-due exclusion,
+bounded reads, real-SDK cursor serialization, and unchanged default behavior.
+
+An isolated real-Firestore test used ten clients to claim 40 distinct articles
+across nine hash bands/outlets, then completed all 240 synthetic articles exactly
+once despite replaying every completion. A separate high-start cursor completed
+all 12 records, including eight before its initial position. No publisher traffic
+or production queue mutation was involved. Proof:
+`runs/verify-distributed-cursor-20261005-191036-67ff17/verification.json`.
+
+Cloud Build `73cb9950-5f70-4c44-be4b-60fccbb30b43` succeeded; all four uploaded
+crawler modules matched the tested source byte-for-byte. The atomic handover
+retired r8 and transferred the same queue to `softpower-crawler-5kbpm`, started
+by controller `c7e1a258-0129-45dd-bd28-20c4bf251501` at 19:16:22 UTC. All 21,931
+completed results, including 17,975 saved full texts, were retained. Launch and
+reservation proofs are under `distributed/phased-r9/` in the same run prefix.
+
+The first meaningful r9 snapshot at 19:20:33 UTC had 308 publisher claims across
+37 outlets (306 HTTP stages across 36), roughly 70 seconds after task startup.
+This confirms that the deployed cursors reach the available later outlets
+immediately. All ten tasks remained on attempt zero with 48 slots each.
+
+Final r9 production verification covered 19:19:29–19:24:40 UTC: 325 new saved
+full texts in 311.2 seconds, equivalent to 3,760/hour, and 335 terminal results
+(3,875/hour). This is about 10.9 times the r4 observed saved-text rate of
+344/hour; differing outlet mixes and the short measurement window mean this is
+not a guarantee for the recovery-heavy tail. All ten tasks remained healthy on
+attempt zero, with 480 effective slots, unique active assignments, and at most
+20 browser plus 20 archive claims. A newly saved original/text pair and queued
+browser/archive checkpoints were verified in GCS. The collection reached
+22,266 terminal results, including 18,300 saved full texts. Proof:
+`runs/ke-full-20261003-192939/distributed/phased-r9/verification.json`.

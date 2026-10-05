@@ -3,6 +3,7 @@ import copy
 import json
 import sys
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -164,6 +165,63 @@ class CoordinatorLaunchTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'no verifiable execution'):
             self.start()
         self.assertEqual(json.loads(self.bucket.data[self.claim][1])['state'], 'creating')
+
+    def reservation(self, **override):
+        value = {'run_id': 'run-1', 'owner': 'handover-token', 'execution': 'handover-token',
+                 'handover_id': 'token', 'distributed': True, 'task_count': 10,
+                 'expires_at': (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(), **override}
+        self.bucket.data['control/worker-lease.json'] = (5, json.dumps(value))
+        return copy.deepcopy(self.bucket.data['control/worker-lease.json'])
+
+    def test_handover_launch_keeps_exact_reservation_held(self):
+        guard = self.reservation()
+        result = deploy.start(self.session, 'test-coordinator', 'run-1', handover_id='token')
+        self.assertEqual(result['name'], self.execution)
+        self.assertEqual(self.bucket.data['control/worker-lease.json'], guard)
+        self.assertEqual(json.loads(self.bucket.data[self.claim][1])['handover_id'], 'token')
+        self.session.post.assert_called_once()
+
+    def test_handover_requires_live_exact_reservation(self):
+        variants = ({'run_id': 'other'}, {'handover_id': 'other'}, {'owner': 'other'},
+                    {'execution': 'other'}, {'distributed': False},
+                    {'expires_at': '2000-01-01T00:00:00+00:00'})
+        for variant in variants:
+            with self.subTest(variant=variant):
+                self.reservation(**variant)
+                with self.assertRaisesRegex(RuntimeError, 'live handover'):
+                    deploy.start(self.session, 'test-coordinator', 'run-1', handover_id='token')
+                self.session.post.assert_not_called()
+                self.assertNotIn(self.claim, self.bucket.data)
+
+    def test_handover_generation_change_prevents_workflow_post(self):
+        self.reservation()
+        original = Blob.upload_from_string
+
+        def changed(blob, body, if_generation_match, **kwargs):
+            result = original(blob, body, if_generation_match, **kwargs)
+            if blob.path == self.claim:
+                generation, value = self.bucket.data['control/worker-lease.json']
+                self.bucket.data['control/worker-lease.json'] = (generation + 1, value)
+            return result
+
+        with patch.object(Blob, 'upload_from_string', changed):
+            with self.assertRaisesRegex(RuntimeError, 'reservation changed'):
+                deploy.start(self.session, 'test-coordinator', 'run-1', handover_id='token')
+        self.session.post.assert_not_called()
+        self.assertEqual(json.loads(self.bucket.data[self.claim][1])['state'], 'creating')
+
+    def test_handover_still_obeys_launch_cas_and_existing_coordinator(self):
+        self.reservation()
+        self.bucket.claim_conflict = True
+        with self.assertRaisesRegex(RuntimeError, 'Another launcher'):
+            deploy.start(self.session, 'test-coordinator', 'run-1', handover_id='token')
+        self.session.post.assert_not_called()
+        self.bucket.claim_conflict = False
+        self.session.get.return_value = response({'executions': [
+            {'name': self.execution, 'state': 'ACTIVE', 'argument': '{"run_id":"run-1"}'}]})
+        result = deploy.start(self.session, 'test-coordinator', 'run-1', handover_id='token')
+        self.assertEqual(result['name'], self.execution)
+        self.session.post.assert_not_called()
 
 
 class CoordinatorIAMTests(unittest.TestCase):

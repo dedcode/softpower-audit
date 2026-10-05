@@ -23,7 +23,8 @@ MAX_CLAIMS = 48
 WORKER_HEARTBEAT_SECONDS = 90
 ACTIVE_RUN_STATES = frozenset(('ready', 'running', 'continuing'))
 TERMINAL_EXCLUSIONS = frozenset(('deferred', 'retrying', 'queued'))
-PHASE_DUE_FIELDS = {'publisher': 'due_at', 'archive': 'archive_due_at'}
+PHASE_DUE_FIELDS = {'publisher': 'due_at', 'browser': 'browser_due_at', 'archive': 'archive_due_at'}
+PHASE_REMAINING_FIELDS = {'browser': 'browser_remaining', 'archive': 'archive_remaining'}
 METRICS = ('attempts', 'retries', 'response_bytes', 'stored_bytes')
 
 
@@ -32,7 +33,7 @@ def article_key(url):
 
 
 def _empty_stats():
-    return {'total': 0, 'processed': 0, 'counts': {}, 'domains': {}, 'archive_remaining': 0,
+    return {'total': 0, 'processed': 0, 'counts': {}, 'domains': {}, 'archive_remaining': 0, 'browser_remaining': 0,
             **{field: 0 for field in METRICS}}
 
 
@@ -61,8 +62,18 @@ def _increment_stats(stats, outlet, status=None, metrics=None, add_total=False):
 
 def _due_field(phase):
     if phase not in PHASE_DUE_FIELDS:
-        raise ValueError('Queue phase must be publisher or archive')
+        raise ValueError('Unsupported queue phase: ' + str(phase))
     return PHASE_DUE_FIELDS[phase]
+
+
+def _transition_phase_stats(stats, source, destination=None):
+    # Missing fields are zero for existing publisher/archive queue shards. No
+    # article-document migration is needed when a new phase is introduced.
+    for phase, field in PHASE_REMAINING_FIELDS.items():
+        remaining = stats.get(field, 0) + int(destination == phase) - int(source == phase)
+        if remaining < 0:
+            raise RuntimeError(phase.title() + ' counter is inconsistent')
+        stats[field] = remaining
 
 
 def _metric_delta(row, metrics):
@@ -94,7 +105,7 @@ class Claim:
 
 
 class SharedQueue:
-    def __init__(self, client, run_id, owner, *, lease_seconds=600, clock=time.time):
+    def __init__(self, client, run_id, owner, *, lease_seconds=600, clock=time.time, start_partition=None):
         if not run_id or '/' in run_id or not owner or '/' in owner:
             raise ValueError('run_id and owner must be nonempty document IDs')
         if lease_seconds <= WORKER_HEARTBEAT_SECONDS:
@@ -109,6 +120,20 @@ class SharedQueue:
         self.stats = self.run_ref.collection('stats')
         self.workers = self.run_ref.collection('workers')
         self._cursors = {phase: None for phase in PHASE_DUE_FIELDS}
+        if start_partition is not None:
+            if (not isinstance(start_partition, (tuple, list)) or len(start_partition) != 2
+                    or any(type(value) is not int for value in start_partition)):
+                raise ValueError('start_partition must contain integer task index and task count')
+            index, count = start_partition
+            if count < 1 or not 0 <= index < count:
+                raise ValueError('start_partition must identify an existing task')
+            # Seed only the first publisher scan at this task's SHA256 stratum
+            # midpoint. It is a cursor, not a range restriction: normal forward
+            # pagination and wrap still visit the entire queue, including IDs
+            # before this point and retried work with a later due_at value.
+            point = ((2 * index + 1) * (1 << 256)) // (2 * count)
+            self._cursors['publisher'] = {'due_at': 0.0,
+                '__name__': self.articles.document(f'{point:064x}')}
         self._random = random.Random(owner)
 
     def _transaction(self, operation):
@@ -249,7 +274,8 @@ class SharedQueue:
         wrapped = False
         page_size = max(48, min(192, limit * 4))
         for _ in range(2):
-            query = self.articles.where(filter=firestore.FieldFilter(due_field, '<=', now)).order_by(due_field).limit(page_size)
+            query = (self.articles.where(filter=firestore.FieldFilter(due_field, '<=', now))
+                     .order_by(due_field).order_by('__name__').limit(page_size))
             if self._cursors[phase] is not None:
                 query = query.start_after(self._cursors[phase])
             candidates = list(query.stream(timeout=30))
@@ -374,14 +400,11 @@ class SharedQueue:
                 raise RuntimeError('Queue counter shard is missing; refusing unaccounted completion')
             stats = stats_snapshot.to_dict()
             _increment_stats(stats, row['outlet'], status, _metric_delta(row, metrics))
-            if claim.phase == 'archive':
-                if stats.get('archive_remaining', 0) < 1:
-                    raise RuntimeError('Archive counter is inconsistent')
-                stats['archive_remaining'] -= 1
+            _transition_phase_stats(stats, claim.phase)
             row.update(state='done', status=status, result_uri=result_uri, metrics=metrics, needs_export=True,
                        result_updated_at=result.get('updated_at'), updated_at=self.clock())
-            row.pop('due_at', None)
-            row.pop('archive_due_at', None)
+            for field in PHASE_DUE_FIELDS.values():
+                row.pop(field, None)
             transaction.set(reference, row)
             transaction.set(stats_ref, stats)
             return True
@@ -424,14 +447,11 @@ class SharedQueue:
                 raise RuntimeError('Queue counter shard is missing; refusing unaccounted handoff')
             stats = stats_snapshot.to_dict()
             _increment_stats(stats, row['outlet'], metrics=_metric_delta(row, metrics))
-            archive_remaining = stats.get('archive_remaining', 0) + int(next_phase == 'archive') - int(claim.phase == 'archive')
-            if archive_remaining < 0:
-                raise RuntimeError('Archive counter is inconsistent')
-            stats['archive_remaining'] = archive_remaining
+            _transition_phase_stats(stats, claim.phase, next_phase)
             row.update(state='ready', phase=next_phase, checkpoint_uri=checkpoint_uri,
                        accounted_metrics=metrics, last_handoff=handoff_identity,
                        status='queued', needs_export=False, updated_at=self.clock())
-            for field in ('due_at', 'archive_due_at', 'owner', 'claim_token'):
+            for field in (*PHASE_DUE_FIELDS.values(), 'owner', 'claim_token'):
                 row.pop(field, None)
             row[next_due] = retry_at
             transaction.set(reference, row)
@@ -528,7 +548,7 @@ class SharedQueue:
             raise RuntimeError('Shared queue counters are incomplete')
         for snapshot in snapshots:
             shard = snapshot.to_dict()
-            for field in ('total', 'processed', 'archive_remaining') + METRICS:
+            for field in ('total', 'processed', *PHASE_REMAINING_FIELDS.values()) + METRICS:
                 totals[field] += shard.get(field, 0)
             counts.update(shard.get('counts', {}))
             for outlet, values in shard.get('domains', {}).items():
@@ -563,7 +583,7 @@ class SharedQueue:
                 'updated_at': datetime.fromtimestamp(now, timezone.utc).isoformat(),
                 **dict(totals), 'counts': dict(counts), 'domains': domain_rows,
                 'pending': pending, 'downloading': downloading,
-                'publisher_remaining': max(0, totals['total'] - totals['processed'] - totals['archive_remaining']),
+                'publisher_remaining': max(0, totals['total'] - totals['processed'] - totals['archive_remaining'] - totals['browser_remaining']),
                 'workers': workers,
                 'worker_count': len(workers), 'stop': control.get('stop', False),
                 'error': control.get('error')}
