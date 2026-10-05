@@ -53,6 +53,7 @@ def aggregate_state(summary, workers, expected):
 class DistributedRun(Run):
     def __init__(self):
         super().__init__()
+        self.configured_workers = int(self.config['workers'])
         self.task_count = int(os.environ['CLOUD_RUN_TASK_COUNT'])
         self.identity = f'{self.execution}-{self.task_index}-{self.task_attempt}-{uuid.uuid4().hex}'
         self.client = firestore.Client(project=self.config['project'], database=os.environ['CRAWL_FIRESTORE_DATABASE'])
@@ -96,10 +97,16 @@ class DistributedRun(Run):
                     continue
                 same = (old.get('execution') == self.execution and old.get('run_id') == self.run_id
                         and old.get('owner') == self.execution and old.get('distributed') is True)
-                if not same and datetime.fromisoformat(old['expires_at']) > datetime.now(timezone.utc):
+                expires_at = datetime.fromisoformat(old['expires_at'])
+                if not same and expires_at > datetime.now(timezone.utc):
                     raise RuntimeError('Another crawl execution holds the collection lease')
                 if not initial and not same:
                     raise RuntimeError('Collection lease ownership was lost')
+                # Every task renews its own article claims, but the cohort has
+                # one guard. Rewriting a fresh shared guard from all ten tasks
+                # causes needless CAS contention at startup and each heartbeat.
+                if same and expires_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+                    return
             except NotFound:
                 # Other tasks may be starting together. A missing initial lease
                 # is expected; losing an established lease must stop requests.
@@ -166,6 +173,8 @@ class DistributedRun(Run):
             elapsed = time.monotonic() - self.started
             data = {'execution': self.execution, 'task_index': self.task_index,
                     'task_attempt': self.task_attempt, 'task_count': self.task_count, 'state': state,
+                    'article_slots': self.config['workers'],
+                    'configured_article_slots': self.configured_workers,
                     'active_stages': stages, 'elapsed_seconds': round(elapsed),
                     'estimated_compute_usd': round(elapsed * (float(os.environ.get('CRAWL_CPU', '4')) * .000018
                                                   + float(os.environ.get('CRAWL_MEMORY_GIB', '4')) * .000002), 4)}
@@ -199,12 +208,15 @@ class DistributedRun(Run):
                        execution=self.execution, state=state, updated_at=now(),
                        active_stages=[stage for record in live for stage in record.get('active_stages', [])],
                        instances=self.task_count, active_instances=len(live),
-                       article_slots=self.task_count * self.config['workers'], workers=current, error=error,
+                       article_slots=self.task_count * self.configured_workers,
+                       active_article_slots=sum(record.get('article_slots', self.configured_workers) for record in live),
+                       workers=current, error=error,
                        estimated_compute_usd=sum(record.get('estimated_compute_usd', 0) for record in current),
                        result_table=self.config['dataset'] + '.crawl_results',
                        source_table=self.config['source_table'],
                        limits={key: self.config.get(key) for key in ('workers', 'per_outlet_workers',
                                'max_runtime_seconds', 'max_response_bytes', 'max_total_attempts')})
+        summary['limits']['workers'] = self.configured_workers
         self.summary_snapshot = summary
         self.last_publish = time.monotonic()
         try:
@@ -229,7 +241,9 @@ class DistributedRun(Run):
                 public_generation = public.generation
             except NotFound:
                 pass
-            latest = json.loads(target.download_as_text())
+            # upload_from_string pins target.generation. A peer may already
+            # have replaced it, so read the latest object through a fresh handle.
+            latest = json.loads(self.bucket.blob(self.prefix + 'progress.json').download_as_text())
             try:
                 public.upload_from_string(json.dumps(latest, separators=(',', ':')), content_type='application/json',
                                           if_generation_match=public_generation, timeout=30)

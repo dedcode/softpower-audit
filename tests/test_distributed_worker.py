@@ -26,6 +26,7 @@ def bare_run():
     run.config = {'workers': 1, 'per_outlet_workers': 4, 'phase': 'verification',
                   'dataset': 'test.crawl', 'source_table': 'test.articles',
                   'max_runtime_seconds': None, 'max_response_bytes': 1000, 'max_total_attempts': 1000}
+    run.configured_workers = 1
     run.run_id = 'verify-distributed-test'
     run.country = 'ZZ'
     run.prefix = 'runs/' + run.run_id + '/'
@@ -75,13 +76,14 @@ class GenerationBlob:
             raise NotFound('Cached generation no longer exists')
         self.generation = current['generation']
 
-    def download_as_text(self, if_generation_match):
+    def download_as_text(self, if_generation_match=None):
         if self.bucket.read_conflict:
             error = self.bucket.read_conflict
             self.bucket.read_conflict = None
             self.bucket.current['generation'] += 1
             raise error('Generation replaced between reload and download')
-        if if_generation_match != self.bucket.current['generation']:
+        wanted = self.generation if if_generation_match is None else if_generation_match
+        if wanted is not None and wanted != self.bucket.current['generation']:
             raise PreconditionFailed('Generation changed')
         return self.bucket.current['payload']
 
@@ -111,6 +113,30 @@ class GenerationBucket:
 
 
 class AggregateTests(unittest.TestCase):
+    def test_public_pointer_reads_fresh_progress_after_peer_replaces_uploaded_generation(self):
+        run = bare_run()
+        run.verification = False
+        run.queue.summary.return_value = {'processed': 2, 'total': 10, 'domains': [],
+                                           'downloading': 1, 'pending': 7, 'counts': {'saved': 2}}
+        run.queue.list_workers.return_value = [worker_record(0, 'running'), worker_record(1, 'running')]
+        original = Mock()
+        original.generation = 4
+        original.download_as_text.side_effect = NotFound('Generation replaced by a peer')
+        fresh = Mock()
+        fresh.download_as_text.return_value = json.dumps({'processed': 3, 'state': 'running'})
+        public = Mock()
+        public.generation = 5
+        reads = []
+        def blob(path):
+            if path == 'progress/ZZ.json':
+                return public
+            reads.append(path)
+            return original if len(reads) == 1 else fresh
+        run.bucket.blob.side_effect = blob
+        run.publish()
+        original.download_as_text.assert_not_called()
+        self.assertEqual(json.loads(public.upload_from_string.call_args.args[0])['processed'], 3)
+
     def test_completion_waits_for_every_task_and_outbox_export(self):
         complete = {'processed': 10, 'total': 10}
         self.assertEqual(distributed.aggregate_state(complete, [worker_record(0, 'completed')], 2), 'running')
@@ -186,6 +212,24 @@ class AggregateTests(unittest.TestCase):
 
 
 class FencingTests(unittest.TestCase):
+    def test_ten_tasks_share_fresh_guard_and_only_first_renews_near_expiry(self):
+        bucket = GenerationBucket()
+        runs = [bare_run() for _ in range(10)]
+        for run in runs:
+            run.bucket = bucket
+            run.lease = bucket.blob('control/shared-test.json')
+            run.task_count = 10
+            run.last_heartbeat = 0
+            run.lease_update(initial=True)
+            run.last_heartbeat = 1
+        self.assertEqual(bucket.current['generation'], 1)
+        previous = json.loads(bucket.current['payload'])
+        previous['expires_at'] = (distributed.datetime.now(distributed.timezone.utc) + distributed.timedelta(minutes=4)).isoformat()
+        bucket.current['payload'] = json.dumps(previous)
+        for run in runs:
+            run.lease_update()
+        self.assertEqual(bucket.current['generation'], 2)
+
     def test_peer_renewals_and_release_use_fresh_generation_handles(self):
         bucket = GenerationBucket()
         first, second = bare_run(), bare_run()
@@ -198,7 +242,9 @@ class FencingTests(unittest.TestCase):
         first.last_heartbeat = second.last_heartbeat = 1
         first.lease_update()
         second.lease_update()
-        self.assertEqual(bucket.current['generation'], 4)
+        # One shared guard is sufficient; the other tasks do not rewrite it.
+        self.assertEqual(bucket.current['generation'], 1)
+        self.assertEqual(len(bucket.handles), 6)
         first.release_cohort_lease({'state': 'continuing', 'workers': [worker_record(0, 'continuing'), worker_record(1, 'continuing')]})
         self.assertIsNone(bucket.current)
 
@@ -215,7 +261,7 @@ class FencingTests(unittest.TestCase):
                 bucket.read_conflict = error
                 with patch.object(distributed.time, 'sleep'):
                     run.lease_update()
-                self.assertEqual(bucket.current['generation'], 3)
+                self.assertEqual(bucket.current['generation'], 2)
 
     def test_failed_claim_renewal_stops_request_admissions(self):
         run = bare_run()

@@ -464,3 +464,48 @@ A new production result was additionally checked end to end: its accepted result
 object, preserved raw response, and 3,578-character extracted text all exist;
 the text uses the expected claim-specific path. Proof:
 `runs/ke-full-20261003-192939/distributed/real-fulltext-verification.json`.
+
+### Scale to ten instances, 2026-10-05
+
+The existing job template is now configured with `taskCount=10` and
+`parallelism=10` (generation 19), giving 480 article slots. Each instance retains
+48 article slots, 4 CPUs / 4 GiB, three heavy-process slots and one browser. The
+image remains `distributed-20261005-r3`; only the task count and parallelism were
+changed. Regional CPU/memory quota checks permit this deployment.
+
+For an explicit distributed resize, STOP and cancel the old execution, then wait
+until that execution and its continuation workflow are terminal. The new
+`scripts/release_distributed_crawl_for_scaleover.py` helper verifies the exact old
+cohort, the STOP generation, and the ready target template before releasing only
+the old global lease. Article claims, completed results, counters, export outbox,
+and host cooldowns stay unchanged. Old claims expire normally while the new
+instances work on other ready URLs. Remove only the verified STOP and start the
+normal continuation controller. No queue reimport is required.
+
+Ten scaleover safety tests pass. An isolated live test with ten clients completed
+all 30 simultaneous join/renew operations and cleaned up its test lease. Proof:
+`runs/verify-distributed-ten-lease-20261005-141605-2eb0ec62/verification.json`.
+The old four-task execution `softpower-crawler-ks4gh` was cancelled and its lease
+released only after its controller was terminal. All 19,048 completed results
+were retained, with 66,945 remaining URLs. Resize proof:
+`runs/ke-full-20261003-192939/distributed/scaleovers/softpower-crawler-ks4gh-to-10.json`.
+
+The first ten-task execution exposed a startup contention issue: task 2 exhausted
+12 shared-lease CAS retries, exited with code 1, and its native retry correctly
+entered the conservative one-slot fallback. Nine tasks continued with 48 slots
+(433 effective slots in total); there was no out-of-memory failure. The previous
+capacity report also incorrectly multiplied the publishing task's reduced limit
+by all tasks.
+
+The `distributed-20261005-r4` correction lets peers reuse their cohort lease
+while it has more than five minutes left; one peer refreshes it when needed.
+Article leases still renew independently. Public status reads use a fresh GCS
+handle, avoiding a separate stale-generation race. Configured cohort capacity is
+stable, and private per-worker heartbeats report effective capacity separately.
+The memory/unknown-crash safeguards remain enabled.
+
+All 204 tests pass. A live ten-client test performed 40 successful operations:
+initial joins, a no-write fresh-lease round, and two forced near-expiry rounds.
+Each required renewal had exactly one successful writer; concurrent conflicts
+were handled successfully. The slowest operation took 2.489 seconds. Proof:
+`runs/verify-distributed-ten-refresh-20261005-144526-caec5997/verification.json`.
