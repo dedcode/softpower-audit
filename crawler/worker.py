@@ -111,9 +111,17 @@ class Run:
         summary['limits']['per_outlet_workers']=self.config.get('per_outlet_workers',1)
         self.put(self.prefix+'progress.json',summary);self.put('progress/'+self.country+'.json',summary)
         return summary
+    def budget_reached(self,summary):
+        runtime_limit=self.config.get('max_runtime_seconds')
+        return ((runtime_limit is not None and time.monotonic()-self.started>runtime_limit)
+                or summary['response_bytes']>=self.config['max_response_bytes']
+                or summary['attempts']>=self.config['max_total_attempts'])
     def run(self):
         self.lease_update(initial=True);state='running';total=self.config.get('input_count',0)
         try:
+            rotation=os.environ.get('CRAWL_ROTATE_SECONDS')
+            rotate_after=None if rotation is None else float(rotation)
+            if rotate_after is not None and not 0<rotate_after<float('inf'):raise ValueError('CRAWL_ROTATE_SECONDS must be positive and finite')
             if self.recovery is None:
                 self.recovery=Recovery(self.bucket,self.prefix,self.execution,self.config['max_runtime_seconds'])
                 self.started=time.monotonic()-self.recovery.elapsed
@@ -136,7 +144,7 @@ class Run:
                             summary=self.progress(state,total,type(first_failure).__name__+': '+str(first_failure)[:600] if first_failure else None)
                             self.flush()
                             if first_failure is None:
-                                if time.monotonic()-self.started>self.config['max_runtime_seconds'] or summary['response_bytes']>=self.config['max_response_bytes'] or summary['attempts']>=self.config['max_total_attempts']:state='paused_limit'
+                                if self.budget_reached(summary):state='paused_limit'
                                 if self.bucket.blob(self.prefix+'STOP').exists():state='paused_by_operator'
                         except Exception as exc:
                             # A failed persistence service may remain unavailable
@@ -145,6 +153,8 @@ class Run:
                             state='failed'
                         last_progress=time.monotonic()
                     if STOP and first_failure is None:state='interrupted'
+                    if state=='running' and rotate_after is not None and self.recovery.attempt_elapsed>=rotate_after and len(self.done)<total:
+                        state='continuing';last_progress=0
                     memory=memory_usage();memory_pressure=bool(memory.get('limit_bytes') and memory.get('current_bytes',0)>=memory['limit_bytes']*.75)
                     if state=='running' and not memory_pressure:
                         self.schedule(pool)
@@ -175,7 +185,14 @@ class Run:
                         else:block_streak[domain]=0
                 if state=='running':state='completed'
             if first_failure is not None:raise first_failure
-            self.flush(final=True);summary=self.progress(state,total,'Releasing memory and restarting automatically with one download at a time.' if state=='recovering_memory' else 'Automatic memory recovery limit reached; saved progress requires attention.' if state=='recovery_failed' else None)
+            if state=='continuing':
+                # Rotation is automatic continuation, never an override of an
+                # operator stop or exhausted resource budget while work drains.
+                if STOP:state='interrupted'
+                elif self.bucket.blob(self.prefix+'STOP').exists():state='paused_by_operator'
+                elif len(self.done)>=total:state='completed'
+                elif self.budget_reached(self.done.snapshot()):state='paused_limit'
+            self.flush(final=True);summary=self.progress(state,total,'Releasing memory and restarting automatically with one download at a time.' if state=='recovering_memory' else 'Automatic memory recovery limit reached; saved progress requires attention.' if state=='recovery_failed' else 'Saved progress; collection will continue automatically in a fresh cloud worker.' if state=='continuing' else None)
             self.bq.load_table_from_json([{'run_id':self.run_id,'country':self.country,'updated_at':now(),'state':state,'config_json':json.dumps(self.config),'summary_json':json.dumps(summary)}],self.config['dataset']+'.crawl_run_events').result(timeout=90)
         except Exception as e:
             try:self.flush(final=True)
@@ -184,12 +201,23 @@ class Run:
             except Exception:pass
             raise
         finally:
+            preserve_error=sys.exc_info()[0] is not None
             try:self.lease.delete(if_generation_match=self.lease.generation)
-            except Exception:pass
+            except NotFound:pass
+            except Exception as release_error:
+                if state=='continuing' and not preserve_error:
+                    # A new execution cannot reclaim this live lease. Fail this
+                    # task instead so its Cloud Run retry can reclaim it safely.
+                    try:self.progress('failed',total,'Could not release worker lease for automatic continuation: '+type(release_error).__name__+': '+str(release_error)[:500])
+                    except Exception:pass
+                    raise
         print(json.dumps({'run_id':self.run_id,'state':state,'processed':len(self.done)}),flush=True)
         return state
 if __name__=='__main__':
-    if os.environ.get('VERIFY_RECOVERY')=='1':
+    if os.environ.get('VERIFY_CONTINUATION')=='1':
+        import verify_continuation
+        verify_continuation.main()
+    elif os.environ.get('VERIFY_RECOVERY')=='1':
         import verify_recovery
         verify_recovery.main()
     elif os.environ.get('VERIFY_MEMORY')=='1':

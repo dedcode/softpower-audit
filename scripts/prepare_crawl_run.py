@@ -10,7 +10,7 @@ def arguments():
 def main():
  args=arguments();assert re.fullmatch('[A-Z]{2}',args.country);assert re.fullmatch(r'[a-zA-Z0-9_-]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+',args.source_table);assert date.fromisoformat(args.start)<=date.fromisoformat(args.end)
  phase='pilot' if args.pilot else 'full';run_id=args.country.lower()+'-'+phase+'-'+datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
- cfg={'project':'citygraph','dataset':'citygraph.softpower_crawl','source_table':args.source_table,'run_id':run_id,'country':args.country,'phase':phase,'start':args.start,'end':args.end,'workers':6,'delay_seconds':3,'max_attempts':3,'max_runtime_seconds':1200 if args.pilot else 82800,'max_response_bytes':100*2**20 if args.pilot else 40*2**30,'max_total_attempts':100 if args.pilot else 150000}
+ cfg={'project':'citygraph','dataset':'citygraph.softpower_crawl','source_table':args.source_table,'run_id':run_id,'country':args.country,'phase':phase,'start':args.start,'end':args.end,'workers':6,'delay_seconds':3,'max_attempts':3,'max_runtime_seconds':1200 if args.pilot else None,'max_response_bytes':100*2**20 if args.pilot else 40*2**30,'max_total_attempts':100 if args.pilot else 150000}
  print(json.dumps(cfg,indent=2),flush=True)
  if not args.apply:return
  bq=bigquery.Client(project='citygraph')

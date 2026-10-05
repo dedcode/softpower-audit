@@ -21,10 +21,38 @@ class RecoveryTests(unittest.TestCase):
    self.assertTrue(r.reserve_restart());now[0]+=20
    r=Recovery(b,'run/','execution',1000,clock=lambda:now[0]);self.assertTrue(r.reduced_concurrency)
   self.assertEqual(r.elapsed,60);self.assertFalse(r.reserve_restart())
+ def test_no_runtime_limit_still_caps_memory_restarts(self):
+  b=Bucket();now=[100.];r=Recovery(b,'run/','execution',None,clock=lambda:now[0])
+  for i in range(3):
+   now[0]+=30*24*3600
+   r=Recovery(b,'run/','execution',None,clock=lambda:now[0])
+   self.assertTrue(r.reserve_restart())
+  self.assertEqual(r.elapsed,90*24*3600)
+  self.assertFalse(r.reserve_restart())
+  self.assertEqual(r.state['memory_restarts'],3)
  def test_time_limit_never_resets_on_restart(self):
   b=Bucket();Recovery(b,'run/','execution',30,clock=lambda:100)
   r=Recovery(b,'run/','execution',30,clock=lambda:131)
   self.assertFalse(r.reserve_restart())
+ def test_attempt_age_survives_memory_exec_and_resets_on_cloud_retry(self):
+  b=Bucket();now=[100.]
+  with patch.dict('os.environ',{'CLOUD_RUN_TASK_ATTEMPT':'0'}):
+   r=Recovery(b,'run/','execution',None,clock=lambda:now[0]);self.assertTrue(r.reserve_restart())
+   now[0]=150
+   restored=Recovery(b,'run/','execution',None,clock=lambda:now[0])
+   self.assertEqual(restored.attempt_elapsed,50)
+  with patch.dict('os.environ',{'CLOUD_RUN_TASK_ATTEMPT':'1'}):
+   now[0]=200
+   retried=Recovery(b,'run/','execution',None,clock=lambda:now[0])
+   self.assertEqual(retried.attempt_elapsed,0);self.assertEqual(retried.elapsed,100)
+   self.assertEqual(retried.state['memory_restarts'],1)
+   now[0]=230
+   self.assertEqual(Recovery(b,'run/','execution',None,clock=lambda:now[0]).attempt_elapsed,30)
+ def test_legacy_recovery_state_preserves_conservative_attempt_age(self):
+  b=Bucket();b.data['run/recovery/execution.json']=json.dumps({'started_at':100,'memory_restarts':1})
+  with patch.dict('os.environ',{'CLOUD_RUN_TASK_ATTEMPT':'0'}):
+   r=Recovery(b,'run/','execution',None,clock=lambda:150)
+  self.assertEqual(r.attempt_elapsed,50);self.assertEqual(r.state['memory_restarts'],1)
  def test_cloud_retry_reduces_concurrency(self):
   r=Recovery(Bucket(),'run/','execution',100)
   with patch.dict('os.environ',{'CLOUD_RUN_TASK_ATTEMPT':'1'}):self.assertTrue(r.reduced_concurrency)

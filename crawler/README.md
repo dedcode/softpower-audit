@@ -290,3 +290,43 @@ outlet-dependent sample is not a reliable whole-run ETA and is below the
 roughly 8,100/hour required for ten hours. Forty of the 48 active pipelines
 were in archive lookup/replay stages, indicating external recovery throttles
 are now the principal constraint rather than available parser slots.
+
+### Continuous collection across Cloud Run executions, 2026-10-05
+
+Full runs now have `max_runtime_seconds: null`: elapsed time does not stop the
+collection. Pilots may still specify a short explicit runtime budget. The
+existing Kenya run resumes the same 85,993-URL manifest and saved checkpoints.
+
+Cloud Run requires a finite task timeout (seven days maximum). Production tasks
+use that maximum and begin a graceful rotation after six days:
+`CRAWL_ROTATE_SECONDS=518400`. They stop scheduling new articles, drain active
+work, flush all checkpoints, and release the global lease. The final state is
+`continuing` only when unfinished work remains and no stop, error or resource
+limit intervened. Task-attempt age survives interpreter memory recovery; a new
+Cloud Run task attempt gets a fresh platform timeout.
+
+The `softpower-crawl-continuation` Cloud Workflow waits for each execution and
+starts its replacement only after checking that the private progress snapshot
+belongs to that exact run and execution, has no active downloads, and explicitly
+requests continuation. It checks `STOP` before launching. Completed runs,
+operator stops, exhausted byte/attempt budgets, and failures do not loop. A
+connector failure stops the controller instead of risking a duplicate worker.
+The Cloud Workflow itself has Google's one-year execution limit; there is no
+application-level collection deadline or periodic restart schedule.
+
+Deployment order (the coordinator uses a dedicated service account with access
+only to the crawl job, operation polling, and operational GCS snapshots):
+
+```sh
+python scripts/deploy_crawler.py --run-id IMAGE_TAG --deploy \
+  --cpu 4 --memory-gib 4 --heavy-slots 3 --browser-slots 1
+python scripts/deploy_crawl_coordinator.py --deploy
+python scripts/deploy_crawler.py --run-id ke-full-20261003-192939 --execute
+```
+
+`--execute --direct` explicitly launches one execution for a pilot or verification
+fixture. Normal full runs use the workflow. Repeated starts reuse an active
+controller for the same run; the worker's global lease additionally prevents
+overlapping crawls. Article/request timeouts, bounded retries, memory protection,
+the 40 GiB response budget and 300,000-attempt budget are unchanged. Those limits
+are independent of elapsed runtime and are not a guaranteed billing cap.

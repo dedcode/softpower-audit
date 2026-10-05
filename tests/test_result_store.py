@@ -248,6 +248,132 @@ class ResultStoreTests(unittest.TestCase):
     def test_result_exception_does_not_requeue_already_recorded_article(self):
         self.assert_failed_worker_drains(fail_after_recording=True)
 
+    def runtime_test_run(self, runtime_limit=None, response_bytes=0, attempts=0):
+        rows = [{'url': 'https://news.ke/a', 'outlet': 'news.ke'}]
+        run = self.new_run({'runs/test/inputs.json.gz': gzip.compress(json.dumps(rows).encode())})
+        run.recovery = Mock()
+        run.country = 'KE';run.run_id = 'test';run.execution = 'test-execution'
+        run.started = time.monotonic() - 30 * 24 * 3600
+        run.active = {};run.paused = {};run.fetcher = Mock();run.lease = Mock()
+        run.config.update(workers=1, max_runtime_seconds=runtime_limit,
+                          max_response_bytes=100000, max_total_attempts=10000)
+        run.progress = Mock(return_value={'response_bytes': response_bytes, 'attempts': attempts})
+        run.fetcher.fetch.return_value = result(key(rows[0]['url']))
+        return run
+
+    def test_unlimited_runtime_completes_after_more_than_23_hours(self):
+        run = self.runtime_test_run()
+        with patch('worker.memory_usage', return_value={}), patch('builtins.print'):
+            state = run.run()
+        self.assertEqual(state, 'completed')
+        run.fetcher.fetch.assert_called_once()
+        self.assertEqual(len(run.done), 1)
+
+    def test_explicit_pilot_runtime_limit_still_pauses(self):
+        run = self.runtime_test_run(runtime_limit=1200)
+        with patch('worker.memory_usage', return_value={}), patch('builtins.print'):
+            state = run.run()
+        self.assertEqual(state, 'paused_limit')
+        run.fetcher.fetch.assert_not_called()
+        self.assertEqual(len(run.queues['news.ke']), 1)
+
+    def test_unlimited_runtime_keeps_byte_and_attempt_limits(self):
+        for metrics in ({'response_bytes': 100000}, {'attempts': 10000}):
+            with self.subTest(metrics=metrics):
+                run = self.runtime_test_run(**metrics)
+                with patch('worker.memory_usage', return_value={}), patch('builtins.print'):
+                    state = run.run()
+                self.assertEqual(state, 'paused_limit')
+                run.fetcher.fetch.assert_not_called()
+                self.assertEqual(len(run.queues['news.ke']), 1)
+
+    def rotation_run(self, total=2, stop_while_draining=False, exhaust_bytes=False):
+        run = self.runtime_test_run()
+        rows = [{'url': 'https://news.ke/' + str(i), 'outlet': 'news.ke'} for i in range(total)]
+        run.bucket.data['runs/test/inputs.json.gz'] = gzip.compress(json.dumps(rows).encode())
+        run.recovery.attempt_elapsed = 0
+        release = threading.Event()
+        reports = []
+        def progress(state, count, error=None):
+            reports.append(state)
+            if state == 'continuing':
+                if stop_while_draining:run.bucket.data['runs/test/STOP'] = b''
+                release.set()
+            return {'response_bytes': 0, 'attempts': 0}
+        run.progress = Mock(side_effect=progress)
+        def fetch(item, *_):
+            run.recovery.attempt_elapsed = 100
+            if not release.wait(5):raise AssertionError('No continuation heartbeat while draining')
+            return result(key(item['url']))
+        run.fetcher.fetch.side_effect = fetch
+        if exhaust_bytes:run.config['max_response_bytes'] = 200
+        with patch.dict('os.environ', {'CRAWL_ROTATE_SECONDS': '100'}), patch('worker.memory_usage', return_value={}), patch('builtins.print'):
+            state = run.run()
+        run.fetcher.fetch.assert_called_once()
+        self.assertIn('continuing', reports)
+        self.assertFalse(run.active)
+        self.assertEqual(len(run.done), 1)
+        persisted = [json.loads(line) for name, data in run.bucket.data.items()
+                     if '/checkpoints/' in name for line in gzip.decompress(data).splitlines()]
+        self.assertEqual([row['article_id'] for row in persisted], [key(rows[0]['url'])])
+        return run, state
+
+    def test_platform_rotation_drains_and_preserves_pending_work(self):
+        run, state = self.rotation_run()
+        self.assertEqual(state, 'continuing')
+        self.assertEqual(len(run.queues['news.ke']), 1)
+        self.assertIn('continue automatically', run.progress.call_args.args[2])
+
+    def test_platform_rotation_finishing_last_url_reports_completed(self):
+        run, state = self.rotation_run(total=1)
+        self.assertEqual(state, 'completed')
+        self.assertFalse(run.queues['news.ke'])
+
+    def test_operator_stop_during_rotation_prevents_continuation(self):
+        run, state = self.rotation_run(stop_while_draining=True)
+        self.assertEqual(state, 'paused_by_operator')
+        self.assertEqual(len(run.queues['news.ke']), 1)
+
+    def test_resource_budget_reached_while_draining_prevents_continuation(self):
+        run, state = self.rotation_run(exhaust_bytes=True)
+        self.assertEqual(state, 'paused_limit')
+        self.assertEqual(len(run.queues['news.ke']), 1)
+
+    def test_continuation_lease_release_failure_is_retried_and_reported(self):
+        run = self.runtime_test_run()
+        run.recovery.attempt_elapsed = 100
+        release_error = RuntimeError('lease storage unavailable')
+        run.lease.delete.side_effect = release_error
+        with patch.dict('os.environ', {'CRAWL_ROTATE_SECONDS': '100'}), patch('worker.memory_usage', return_value={}):
+            with self.assertRaises(RuntimeError) as caught:
+                run.run()
+        self.assertIs(caught.exception, release_error)
+        self.assertEqual(run.progress.call_args.args[0], 'failed')
+        self.assertIn('Could not release worker lease', run.progress.call_args.args[2])
+        self.assertEqual(len(run.queues['news.ke']), 1)
+        run.fetcher.fetch.assert_not_called()
+
+    def test_continuation_already_released_lease_can_continue(self):
+        from google.api_core.exceptions import NotFound
+        run = self.runtime_test_run()
+        run.recovery.attempt_elapsed = 100
+        run.lease.delete.side_effect = NotFound('already released')
+        with patch.dict('os.environ', {'CRAWL_ROTATE_SECONDS': '100'}), patch('worker.memory_usage', return_value={}), patch('builtins.print'):
+            self.assertEqual(run.run(), 'continuing')
+        self.assertEqual(run.progress.call_args.args[0], 'continuing')
+
+    def test_lease_release_error_never_masks_original_worker_failure(self):
+        run = self.runtime_test_run()
+        run.recovery.attempt_elapsed = 0
+        first_error = RuntimeError('article storage failed')
+        run.fetcher.fetch.side_effect = first_error
+        run.lease.delete.side_effect = RuntimeError('lease storage failed')
+        with patch.dict('os.environ', {'CRAWL_ROTATE_SECONDS': '100'}), patch('worker.memory_usage', return_value={}):
+            with self.assertRaises(RuntimeError) as caught:
+                run.run()
+        self.assertIs(caught.exception, first_error)
+        self.assertIn('article storage failed', run.progress.call_args.args[2])
+
     def test_input_manifest_only_queues_unfinished_urls(self):
         rows = [{'url': 'https://news.ke/' + str(i), 'outlet': 'news.ke'} for i in range(5)]
         run = self.new_run({'runs/test/inputs.json.gz': gzip.compress(json.dumps(rows).encode())})

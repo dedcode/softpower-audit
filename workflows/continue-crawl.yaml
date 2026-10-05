@@ -1,0 +1,161 @@
+# One coordinator execution per collection run. The worker checkpoints and
+# releases its lease before returning "continuing"; only then may we relaunch.
+# Environment: CRAWL_BUCKET and CRAWL_JOB_NAME. The job is in the workflow's
+# GOOGLE_CLOUD_PROJECT_ID / GOOGLE_CLOUD_LOCATION. Input: {"run_id": "..."}.
+# The coordinator has no application-level duration or rotation count limit.
+# Cloud Workflows still has its own execution lifetime limit (one year).
+main:
+  params: [input]
+  steps:
+    - initialize:
+        assign:
+          - run_id: ${input.run_id}
+          - bucket: ${sys.get_env("CRAWL_BUCKET")}
+          - job: ${sys.get_env("CRAWL_JOB_NAME")}
+          - project: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - location: ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
+          - executions_finished: 0
+    - validateConfiguration:
+        switch:
+          - condition: ${not text.match_regex(run_id, "^[A-Za-z0-9][A-Za-z0-9._-]*$") or bucket == "" or job == ""}
+            steps:
+              - invalidConfiguration:
+                  raise: "A valid run_id, CRAWL_BUCKET, and CRAWL_JOB_NAME are required"
+    - paths:
+        assign:
+          - job_name: ${"projects/" + project + "/locations/" + location + "/jobs/" + job}
+          - prefix: ${"runs/" + run_id + "/"}
+    - checkStop:
+        call: object_exists
+        args:
+          bucket: ${bucket}
+          object_name: ${prefix + "STOP"}
+        result: stopped
+    - honorStop:
+        switch:
+          - condition: ${stopped}
+            steps:
+              - operatorPause:
+                  return:
+                    run_id: ${run_id}
+                    state: paused_by_operator
+                    executions_finished: ${executions_finished}
+    - runCrawler:
+        try:
+          call: googleapis.run.v2.projects.locations.jobs.run
+          args:
+            name: ${job_name}
+            body:
+              overrides:
+                containerOverrides:
+                  - env:
+                      - name: RUN_ID
+                        value: ${run_id}
+            connector_params:
+              timeout: 31536000
+              polling_policy:
+                initial_delay: 5
+                multiplier: 1.5
+                max_delay: 300
+          result: run_result
+        except:
+          as: error
+          steps:
+            - reportExecutionFailure:
+                # Do not relaunch a failed/uncertain execution. Preserve the
+                # error so the coordinator is FAILED in Cloud Workflows too.
+                raise: ${error}
+    - executionResult:
+        assign:
+          # Accommodate the Operation response wrapper and the connector's
+          # resolved Execution representation; reject an Operation name below.
+          - execution: ${default(map.get(run_result, "response"), run_result)}
+          - execution_name: ${default(map.get(execution, "name"), "")}
+    - validateExecutionName:
+        switch:
+          - condition: ${not text.match_regex(execution_name, "/executions/[^/]+$")}
+            steps:
+              - invalidExecution:
+                  raise: "Cloud Run did not return a completed Execution resource"
+    - executionIdentity:
+        assign:
+          - execution_parts: ${text.split(execution_name, "/")}
+          - execution_id: ${execution_parts[len(execution_parts) - 1]}
+          - executions_finished: ${executions_finished + 1}
+    - readProgress:
+        try:
+          call: http.get
+          args:
+            url: ${"https://storage.googleapis.com/storage/v1/b/" + text.url_encode(bucket) + "/o/" + text.url_encode(prefix + "progress.json")}
+            query:
+              alt: media
+            auth:
+              type: OAuth2
+          result: progress_response
+        retry: ${http.default_retry}
+    - progress:
+        assign:
+          # Worker writes application/json, which http.get decodes into a map.
+          - summary: ${progress_response.body}
+          - state: ${map.get(summary, "state")}
+          - pending: ${map.get(summary, "pending")}
+    - validateProgress:
+        switch:
+          - condition: ${map.get(summary, "run_id") != run_id or map.get(summary, "execution") != execution_id}
+            steps:
+              - wrongExecution:
+                  raise: "Progress does not belong to the execution that just finished"
+          - condition: ${map.get(summary, "downloading") != 0}
+            steps:
+              - unfinishedSnapshot:
+                  raise: "Finished execution left an active-work progress snapshot"
+          - condition: ${get_type(pending) != "integer" or pending < 0}
+            steps:
+              - invalidPending:
+                  raise: "Finished execution has no valid pending count"
+          - condition: ${state == "completed" and pending != 0}
+            steps:
+              - incompleteCompletion:
+                  raise: "Completed progress still contains pending work"
+    - continueOnlyCheckpointedRotation:
+        switch:
+          - condition: ${state == "continuing" and pending > 0}
+            next: checkStop
+    - finished:
+        # Operator pauses, budget pauses, recovery failures, and unknown states
+        # all stop here. A failed run must never become an automatic restart.
+        return:
+          run_id: ${run_id}
+          state: ${state}
+          execution: ${execution_id}
+          processed: ${map.get(summary, "processed")}
+          pending: ${pending}
+          error: ${map.get(summary, "error")}
+          executions_finished: ${executions_finished}
+
+object_exists:
+  params: [bucket, object_name]
+  steps:
+    - readMetadata:
+        try:
+          call: http.get
+          args:
+            url: ${"https://storage.googleapis.com/storage/v1/b/" + text.url_encode(bucket) + "/o/" + text.url_encode(object_name)}
+            query:
+              fields: name
+            auth:
+              type: OAuth2
+        retry: ${http.default_retry}
+        except:
+          as: error
+          steps:
+            - handleMissingObject:
+                switch:
+                  - condition: ${map.get(error, "code") == 404}
+                    steps:
+                      - missingObject:
+                          return: false
+            - failClosed:
+                raise: ${error}
+    - found:
+        return: true
