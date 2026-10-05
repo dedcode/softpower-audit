@@ -330,3 +330,27 @@ controller for the same run; the worker's global lease additionally prevents
 overlapping crawls. Article/request timeouts, bounded retries, memory protection,
 the 40 GiB response budget and 300,000-attempt budget are unchanged. Those limits
 are independent of elapsed runtime and are not a guaranteed billing cap.
+
+Verification: 106 local tests pass, including graceful rotation, draining the
+last article, STOP during draining, byte/attempt limits, memory-attempt age,
+lease-release failures, conditional IAM preservation and duplicate-safe launch.
+The cloud fixture `verify-continuation-20261005-0833` used exactly two distinct
+Cloud Run executions (`softpower-crawler-continuation-check-mmrn6` and
+`softpower-crawler-continuation-check-ss4qk`), then finished with zero pending
+work. A separate STOP fixture launched zero executions. The private evidence is
+`verification/continuous-20261005-r2/continuation.json`; temporary test job and
+workflow resources were removed after verification.
+
+Production image `continuous-20261005-r2` is deployed with the same 4 CPU / 4 GiB,
+48 article pipelines, four per outlet and three isolated heavy-process slots
+(one browser). The existing Kenya config's runtime limit is now null; its prior
+config is preserved as `runs/ke-full-20261003-192939/config-before-continuous-20261005.json`.
+Workflow execution `2f4e634b-6042-4902-9a1b-0c3f727f84a4` launched worker execution
+`softpower-crawler-d6xsv` to resume from 17,922 completed results. The public
+status page recognizes the automatic `continuing` state.
+
+Live verification at 09:54 UTC confirmed all 17,922 prior results were restored,
+48 active article pipelines, 17,933 terminal results and 14,490 saved full texts
+(11 additional full texts after restart). The public status API reported the
+same running state with no error. All 18 checkpoint replay loads completed with
+no bad records or load failures.
