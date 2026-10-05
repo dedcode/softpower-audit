@@ -6,6 +6,7 @@ from google.cloud import storage,firestore
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'crawler'))
 from result_store import ResultIndex,iter_input_rows
 from shared_queue import SharedQueue
+from recover_crawl_for_migration import validate_import_proof
 
 
 def main():
@@ -24,6 +25,7 @@ def main():
         cfg=json.loads(b.blob(prefix+'config.json').download_as_text());assert cfg['run_id']==args.run_id
         previous=json.loads(b.blob(prefix+'progress.json').download_as_text())
         if previous.get('downloading'):raise RuntimeError('The prior worker still has active articles')
+        validate_import_proof(b,previous,cfg)
         checkpoints=list(b.list_blobs(prefix=prefix+'checkpoints/'))
         def read(blob):return blob.name,gzip.decompress(blob.download_as_bytes(timeout=60))
         with ThreadPoolExecutor(max_workers=12) as pool:

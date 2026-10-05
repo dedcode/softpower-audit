@@ -414,3 +414,32 @@ Blob generation caching during cohort lease renewal. Renewal and release now
 use fresh object handles and retry concurrent 404/412 generation races; a live
 four-client concurrent renewal check passed after that fix. The final image is
 `distributed-20261005-r3`.
+
+The corrected two-task cloud pilot `softpower-crawler-distributed-check-q8xrf`
+completed all 96 synthetic URLs: task 0 accepted 47 and task 1 accepted 49.
+Validation confirmed unique claims/results, all 96 immutable GCS evidence
+objects, matching aggregate counters, zero remaining work, and an empty
+BigQuery export outbox. This tested coordination using synthetic article results;
+the existing extraction tests cover the content pipeline. Both cloud tasks
+succeeded. Proof: `verification/distributed-20261005-r3/result.json` in the
+private crawl bucket. The temporary Cloud Run test job was removed afterward.
+
+For a legacy execution whose in-flight archive requests make draining impractical,
+keep STOP in place and cancel that exact Cloud Run execution. After both the
+execution and its continuation workflow are terminal, use the explicit recovery
+helper with their IDs and the verified old lease owner:
+
+```sh
+python scripts/recover_crawl_for_migration.py --run-id RUN_ID \
+  --execution OLD_EXECUTION --workflow-execution OLD_WORKFLOW_EXECUTION \
+  --lease-owner OLD_LEASE_OWNER --expected-count EXPECTED_INPUT_COUNT --apply
+```
+
+Recovery replays every durable checkpoint into BigQuery, reconstructs counts
+solely from those checkpoints, and returns interrupted articles to pending.
+It preserves original files and publishes `stopped_for_migration`, never clean
+completion. Only the exact terminated worker's lease can be released. The
+importer requires a finalized recovery proof matching the checkpoint inventory,
+manifest/config/progress generations, and count totals. STOP must remain until
+import succeeds. This is a one-time migration action, not a runtime cutoff.
+Validation including these recovery safeguards: 189 Python tests pass.
