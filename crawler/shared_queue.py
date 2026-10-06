@@ -256,8 +256,10 @@ class SharedQueue:
         """Claim up to ``limit`` URLs using a bounded indexed due_at query.
 
         ``per_outlet`` is per instance; shared HTTP pacing is enforced separately.
-        Pagination rotates locally so a few currently saturated outlets cannot
-        indefinitely hide other work. No corpus-wide scan occurs on refill.
+        Publisher pagination rotates locally around saturated outlets. Recovery
+        always starts with the oldest due work: a small recovery reservation
+        must not skip the rest of its page when new work keeps arriving.
+        No corpus-wide scan occurs on refill.
         """
         due_field = _due_field(phase)
         if not 0 <= limit <= MAX_CLAIMS or per_outlet < 1:
@@ -272,21 +274,26 @@ class SharedQueue:
         excluded = set(excluded_outlets)
         claims = []
         wrapped = False
+        rotating = phase == 'publisher'
+        cursor = self._cursors[phase] if rotating else None
         page_size = max(48, min(192, limit * 4))
         for _ in range(2):
             query = (self.articles.where(filter=firestore.FieldFilter(due_field, '<=', now))
                      .order_by(due_field).order_by('__name__').limit(page_size))
-            if self._cursors[phase] is not None:
-                query = query.start_after(self._cursors[phase])
+            if cursor is not None:
+                query = query.start_after(cursor)
             candidates = list(query.stream(timeout=30))
             if not candidates:
-                if self._cursors[phase] is None or wrapped:
+                if not rotating or cursor is None or wrapped:
                     break
                 self._cursors[phase] = None
+                cursor = None
                 wrapped = True
                 continue
-            self._cursors[phase] = candidates[-1]
-            self._random.shuffle(candidates)
+            cursor = candidates[-1]
+            if rotating:
+                self._cursors[phase] = cursor
+                self._random.shuffle(candidates)
             for candidate in candidates:
                 doc = candidate.to_dict()
                 outlet = doc.get('outlet')

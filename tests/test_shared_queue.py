@@ -514,7 +514,59 @@ class SharedQueueTests(unittest.TestCase):
         self.assertEqual(self.database.query_results, 1)
         self.assertEqual(len(self.queue.claim(48)), 48)
         self.assertEqual(set(self.queue._cursors), {'publisher', 'browser', 'archive'})
-        self.assertNotEqual(self.queue._cursors['publisher'].id, self.queue._cursors['archive'].id)
+        self.assertIsNotNone(self.queue._cursors['publisher'])
+        self.assertIsNone(self.queue._cursors['archive'])
+
+    def test_recovery_does_not_skip_old_work_when_new_work_keeps_arriving(self):
+        for phase in ('browser', 'archive'):
+            with self.subTest(phase=phase):
+                self.database = Database()
+                self.queue = self.make_queue('worker-a')
+                items = [article(i) for i in range(144)]
+                self.seed(items)
+                old_ids = {article_key(item['url']) for item in items[:72]}
+                future_ids = [article_key(item['url']) for item in items[72:]]
+                for _ in range(3):
+                    publishers = self.queue.claim(48, per_outlet=48)
+                    self.assertEqual(len(publishers), 48)
+                    for claim in publishers:
+                        self.queue.handoff(claim, 'gs://bucket/' + claim.article_id,
+                            next_phase=phase, retry_at=100 if claim.article_id in old_ids else 2000,
+                            result=result(claim.item, 'queued'))
+                admitted = set()
+                for refill in range(36):
+                    # Eligible recovery work keeps arriving, including more than
+                    # one full page. The older rows must still drain first.
+                    for aid in future_ids[2 * refill:2 * refill + 2]:
+                        self.queue.articles.document(aid).update({phase + '_due_at': 101 + refill})
+                    self.database.query_results = 0
+                    claims = self.queue.claim(2, phase=phase)
+                    self.assertEqual(len(claims), 2)
+                    identities = {claim.article_id for claim in claims}
+                    self.assertTrue(identities <= old_ids - admitted)
+                    self.assertLessEqual(self.database.query_results, 96)
+                    admitted.update(identities)
+                self.assertEqual(admitted, old_ids)
+                self.assertIsNone(self.queue._cursors[phase])
+                self.assertTrue(all(claim.article_id in future_ids for claim in self.queue.claim(2, phase=phase)))
+
+    def test_recovery_pages_past_saturated_outlets_but_revisits_them_next_refill(self):
+        items = [article(i, 'busy.ke' if i < 48 else 'available.ke') for i in range(50)]
+        self.seed(items)
+        busy_ids = {article_key(item['url']) for item in items[:48]}
+        while True:
+            publishers = self.queue.claim(48, per_outlet=48)
+            if not publishers:
+                break
+            for claim in publishers:
+                self.queue.handoff(claim, 'gs://bucket/' + claim.article_id,
+                    next_phase='archive', retry_at=100 if claim.article_id in busy_ids else 101,
+                    result=result(claim.item, 'queued'))
+        self.database.query_results = 0
+        admitted = self.queue.claim(2, phase='archive', inflight={'busy.ke': 4})
+        self.assertEqual([claim.item['outlet'] for claim in admitted], ['available.ke'] * 2)
+        self.assertEqual(self.database.query_results, 50)
+        self.assertTrue(all(claim.article_id in busy_ids for claim in self.queue.claim(2, phase='archive')))
 
     def test_archive_concurrent_claims_have_unique_ownership(self):
         items = [article(i, f'outlet-{i % 24}.ke') for i in range(96)]

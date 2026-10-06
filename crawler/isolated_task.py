@@ -31,6 +31,25 @@ def navigate(page,url,queue_wait_seconds,timeout_seconds=35):
     finally:page.remove_listener('response',capture)
 
 
+def intercept_requests(session,authorize,main_frame_id):
+    """Pause each real request, including redirect hops skipped by page.route."""
+    count=[0]
+    def guard(event):
+        count[0]+=1
+        request_id=event['requestId']
+        kind=event.get('resourceType','').lower()
+        def deny():
+            session.send('Fetch.failRequest',{'requestId':request_id,'errorReason':'BlockedByClient'})
+        if (count[0]>80 or kind in ('image','media','font','websocket')
+                or (kind=='document' and event.get('frameId')!=main_frame_id)):return deny()
+        try:
+            if not authorize(event['request']['url'],kind=='document'):return deny()
+            session.send('Fetch.continueRequest',{'requestId':request_id})
+        except Exception:deny()
+    session.on('Fetch.requestPaused',guard)
+    session.send('Fetch.enable',{'patterns':[{'urlPattern':'*','requestStage':'Request'}]})
+
+
 def render(root,url):
     from playwright.sync_api import sync_playwright
     from crawl import UA,MAX_BODY
@@ -40,26 +59,27 @@ def render(root,url):
         reply=json.loads(sys.stdin.readline())
         queued[0]+=max(0.,float(reply.get('queue_wait_seconds',0.)))
         return reply.get('allowed',False)
-    if not authorize(url,True):raise RuntimeError('Robots policy does not permit rendering')
+    # Request interception performs admission immediately before the
+    # actual request. A separate preflight would consume a second host slot.
     with sync_playwright() as p:
-        browser=p.chromium.launch(headless=True,args=['--disable-dev-shm-usage'])
+        browser=p.chromium.launch(headless=True,args=['--disable-dev-shm-usage'],
+                                  ignore_default_args=['--disable-popup-blocking'])
         try:
             context=browser.new_context(user_agent=UA,service_workers='block',accept_downloads=False)
-            page=context.new_page();count=[0]
+            # The saved HTML is the main document only; auxiliary browsing
+            # contexts add requests without contributing extracted article text.
+            context.add_init_script("Object.defineProperty(window, 'open', {value: () => null, writable: false, configurable: false});")
+            page=context.new_page()
+            context.on('page',lambda popup:popup.close())
             def observe_response(response):
                 if response.status not in (429,503):return
                 print(json.dumps({'type':'response','url':response.url,'status':response.status,
                                   'retry_after':response.headers.get('retry-after')}),flush=True)
                 if not json.loads(sys.stdin.readline()).get('received'):raise RuntimeError('Response coordination failed')
             page.on('response',observe_response)
-            def guard(route):
-                req=route.request;count[0]+=1
-                if count[0]>80 or req.resource_type in ('image','media','font','websocket'):return route.abort()
-                try:
-                    if not authorize(req.url,req.resource_type=='document'):return route.abort()
-                    route.continue_()
-                except Exception:route.abort()
-            page.route('**/*',guard)
+            session=context.new_cdp_session(page)
+            main_frame_id=session.send('Page.getFrameTree')['frameTree']['frame']['id']
+            intercept_requests(session,authorize,main_frame_id)
             response=navigate(page,url,lambda:queued[0])
             if response is None or response.status!=200:raise RuntimeError('Browser did not receive HTTP 200')
             try:page.wait_for_load_state('networkidle',timeout=8000)

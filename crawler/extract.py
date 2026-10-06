@@ -3,9 +3,21 @@ import json,re
 from urllib.parse import urlsplit,urljoin
 from lxml import html
 import trafilatura
-VERSION='toolbox-2'
+from extractor_version import VERSION
 CLASSES=('post-content','post__content','banner-text','story-content','tbl_art','article-body','entry-content','body-copy','article-content__content')
 PROMO=('get full access for','subscribe now','unlimited access to all premium','ad-free browsing','mobile-optimised reading','weekly newsletters','search option is now available','for subscriptions on news from china daily','for more visit china daily','stand with the standard','the standard group plc')
+def publisher_host(url):
+ # A replay URL is evidence from its embedded original publisher, not from
+ # arbitrary publisher-looking text in its query, fragment, or a foreign host.
+ try:
+  parsed=urlsplit(url)
+  if parsed.scheme not in ('http','https'):return None
+  if parsed.hostname=='web.archive.org':
+   replay=re.fullmatch(r'/web/\d{1,14}(?:(?:id|if|im|js|cs|oe|mp)_)?/(https?://.+)',parsed.path)
+   if not replay:return None
+   parsed=urlsplit(replay.group(1))
+  return parsed.hostname if parsed.scheme in ('http','https') else None
+ except ValueError:return None
 def walk(value):
  if isinstance(value,dict):
   yield value
@@ -50,7 +62,11 @@ def extract(body,url):
  if not paywall:
   for s in schemas:
    if isinstance(s.get('articleBody'),str):candidates.append(('structured articleBody',normalized(html.fromstring('<div>'+s['articleBody']+'</div>').text_content()),True))
- for cls in CLASSES:
+ # BusinessDaily uses article elements for wrappers and related-story cards as
+ # well as its body. Select the exact body class instead of weakening the
+ # listing-page veto for every parser result with og:type=article.
+ classes=CLASSES+('article-story',) if publisher_host(url) in ('businessdailyafrica.com','www.businessdailyafrica.com') else CLASSES
+ for cls in classes:
   nodes=tree.xpath('//*[contains(concat(" ",normalize-space(@class)," ")," '+cls+' ")]')
   for node in nodes[:2]:
    # banner-text is a known single-article body on Kenya Star, not a generic marker.

@@ -709,3 +709,60 @@ attempt zero, with 480 effective slots, unique active assignments, and at most
 browser/archive checkpoints were verified in GCS. The collection reached
 22,266 terminal results, including 18,300 saved full texts. Proof:
 `runs/ke-full-20261003-192939/distributed/phased-r9/verification.json`.
+
+### Recovery fairness and stored HTML reanalysis (6 October)
+
+The five-minute r9 result above did not hold over the following hours. An
+article-deduplicated read of the result events showed 773–861 saved texts per
+full hour between 21:00 and 02:00 UTC. At 02:31, 27,072 articles were waiting
+for archive recovery and 1,372 for browser recovery; publisher work was mainly
+Kenya Star (12,830) and Standard Media (12,591). Kenya Star's 20-second robots
+interval alone implies at least 71 hours for those original requests. Ten task
+instances cannot multiply a shared host's allowed request rate.
+
+Recovery scans now revisit the oldest due rows on every refill. Previously a
+48-row page was shuffled and its cursor advanced even when only two recovery
+slots were filled, allowing older rows to be repeatedly bypassed. Publisher
+scans retain their distributed rotating cursors. Recovery reads remain bounded
+to two pages, and transactional claims still prevent duplicate ownership.
+
+A confirmed redirect to a bare homepage skips browser rendering and continues
+archive recovery. Query- and fragment-routed pages remain eligible. Chromium
+admits each actual request once through CDP interception, including redirect
+hops, replacing the duplicate preflight admission. Auxiliary frames, popups,
+and image/media/font requests remain blocked. Local real-Chrome tests verify
+redirect admission, denied targets, auxiliary requests, and Retry-After reports.
+
+BusinessDaily's scoped `article-story` body is now recognized despite many
+related-story cards. This selector applies only to the exact publisher hosts
+and their recognized Wayback replay URLs, retaining paywall and quality checks.
+A versioned checkpoint resume reparses previously stored successful HTML before
+making new recovery requests. Results retain their original raw reference;
+partial candidates and cumulative accounting survive the reanalysis. Missing
+or corrupt objects continue ordinary recovery. No LLM is involved.
+
+Validation: 314 Python tests (311 passed; 3 browser tests opt-in), plus all three
+opt-in local Chrome tests passed. The real stored-HTML check and deployment
+proofs are recorded separately; throughput must be assessed over complete hours,
+not extrapolated from an initial burst.
+
+A bounded read-only check of 30 pending BusinessDaily browser checkpoints and
+30 archive checkpoints found no immediately recoverable full texts in that
+sample. Archive candidates were subscription previews (11) or listing pages
+(19). A separate real stored archive body did produce 4,742 characters through
+the complete reanalysis path, using an explicitly synthetic legacy checkpoint,
+with zero publisher/archive/browser requests and zero production writes. This
+validates the path; it is not evidence of a production backlog recovery rate.
+
+Cloud Build `c8bb41d7-aa66-4350-bb9a-e8283155326f` succeeded. The uploaded changed
+modules matched the tested files exactly. The atomic handover retired r9 and
+transferred the existing queue to `softpower-crawler-wcjsk`, launched by
+controller `86f0e295-02ce-49b0-ab31-8fec7281ab9b` at 03:54:28 UTC. All 31,277
+finished URLs, including 26,753 saved texts, were retained. Launch and reservation
+proofs are under `runs/ke-full-20261003-192939/distributed/phased-r10/`.
+
+At 03:58:16 UTC, 23 of the 24 oldest recovery records sampled before handover
+had been claimed or advanced by r10 (12 archive, 11 browser). Stored checkpoints
+confirmed old Citizen TV homepage redirects now skip rendering and proceed to
+archive recovery. This directly verifies the scheduling and homepage fixes;
+claiming recovery work is not the same as finishing it or recovering full text.
