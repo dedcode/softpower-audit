@@ -1,9 +1,9 @@
-"""Cross-container host pacing with fenced, expiring Firestore leases.
+"""Cross-container request pacing and bounded, fenced download leases.
 
-The caller keeps its in-process host lock while acquiring this lease. This
-leaves one Firestore contender per host per container, rather than one per
-article. Every network operation must finish before the lease's bounded
-lifetime; renewals are available for longer browser sessions.
+Request starts are spaced independently of response lifetimes. A slow body
+does not prevent another request from starting when a permit and its start
+time are available. Every operation must finish before its lease expires;
+renewals are available for longer browser sessions.
 """
 import hashlib
 import math
@@ -46,27 +46,99 @@ class Admission:
     cooldown_seconds: float = 0.
 
 
-def acquire_state(state, now, owner, host, delay, ttl):
+def _capacity(value):
+    if isinstance(value, bool) or int(value) != value or value < 1 or value > 32:
+        raise ValueError('max_concurrency must be an integer between 1 and 32')
+    return int(value)
+
+
+def _active_leases(state, now):
+    return {owner: float(deadline) for owner, deadline in state.get('leases', {}).items()
+            if float(deadline) > now}
+
+
+def _legacy_owner(state):
+    # A late pre-upgrade client may preserve the new (empty) leases map while
+    # writing its own exclusive owner. Recognize that as legacy ownership too.
+    owner = state.get('owner')
+    return owner if owner and owner not in state.get('leases', {}) else None
+
+
+def _lease_state(state, leases, now):
+    """Keep an exclusive compatibility gate for any late legacy reader.
+
+    New readers use only the individual leases. The old implementation sees
+    an occupied owner until the latest active permit expires, so it cannot
+    accidentally add an uncounted download during a rolling migration.
+    """
+    state = {**state, 'host_policy_version': 2, 'leases': leases, 'updated_at': now}
+    state['owner'] = next(iter(leases), None)
+    state['lease_until'] = max(leases.values(), default=0.)
+    return state
+
+
+def _spacing(state, delay, robots_delay):
+    known_robots = float(state.get('robots_delay_seconds', 0))
+    legacy_delay = float(state.get('delay_seconds', 0))
+    if 'robots_delay_seconds' not in state and legacy_delay > 3:
+        # Old documents did not distinguish our default three seconds from
+        # robots rules. A larger legacy delay remains conservatively bound.
+        known_robots = max(known_robots, legacy_delay)
+    if robots_delay is None:
+        # Backward-compatible callers supplied only an effective delay. Never
+        # relax it without a freshly read robots policy that separates the two.
+        # Do not label an unknown old three-second default as a robots rule:
+        # a request for robots.txt itself may still be using that old default.
+        if delay > 3:
+            known_robots = max(known_robots, delay)
+        return max(delay, known_robots, legacy_delay), known_robots
+    else:
+        known_robots = max(known_robots, robots_delay)
+    return max(delay, known_robots), known_robots
+
+
+def admission_state(state, now, delay, max_concurrency=1, robots_delay=None):
+    """Read-only policy; eligibility is advisory until an atomic acquire."""
+    spacing, _ = _spacing(state, delay, robots_delay)
+    cooldown = max(0., float(state.get('cooldown_until', 0)) - now)
+    last_started = state.get('last_started_at')
+    permitted = (float(last_started) + spacing if last_started is not None
+                 else float(state.get('next_allowed_at', 0)))
+    if _legacy_owner(state):
+        # An existing legacy owner holds an exclusive permit. Do not overlap it
+        # until it releases or expires, regardless of the new configured limit.
+        lease_wait = max(0., float(state.get('lease_until', 0)) - now)
+    elif 'leases' in state:
+        expirations = sorted(_active_leases(state, now).values())
+        # If the configured capacity decreases, enough old permits must expire
+        # before a new start can fit under the smaller bound.
+        lease_wait = (expirations[len(expirations) - max_concurrency] - now
+                      if len(expirations) >= max_concurrency else 0.)
+    else:
+        lease_wait = 0.
+    wait = max(0., cooldown, lease_wait, permitted - now)
+    return Admission(wait == 0, wait, cooldown)
+
+
+def acquire_state(state, now, owner, host, delay, ttl, max_concurrency=1, robots_delay=None):
     """Pure transaction policy, shared by the Firestore adapter and tests."""
     state = dict(state)
-    cooldown = max(0., float(state.get('cooldown_until', 0)) - now)
-    spacing = max(delay, float(state.get('delay_seconds', 0)))
-    permitted = max(float(state.get('next_allowed_at', 0)),
-                    float(state.get('last_started_at', 0)) + spacing if state.get('last_started_at') is not None else 0)
-    lease = max(0., float(state.get('lease_until', 0)) - now) if state.get('owner') else 0.
-    wait = max(cooldown, lease, permitted - now)
+    max_concurrency = _capacity(max_concurrency)
+    spacing, known_robots = _spacing(state, delay, robots_delay)
+    result = admission_state(state, now, delay, max_concurrency, robots_delay)
+    policy = {'host': host, 'delay_seconds': spacing,
+              'robots_delay_seconds': known_robots, 'default_delay_seconds': delay,
+              'max_concurrency': max_concurrency}
+    wait = result.wait_seconds
     if wait > 0:
-        # Learning a stricter robots delay matters even while another request
-        # owns the host: a third container must observe it on its next claim.
-        changed = None
-        if spacing > float(state.get('delay_seconds', 0)):
-            changed = {**state, 'host': host, 'delay_seconds': spacing,
-                       'next_allowed_at': permitted, 'updated_at': now}
-        return Admission(False, wait, cooldown), changed
-    state.update(host=host, owner=owner, lease_until=now + ttl,
-                 last_started_at=now, next_allowed_at=now + spacing,
-                 delay_seconds=spacing, updated_at=now)
-    return Admission(True), state
+        # Share newly learned robots policy even if the host is already full.
+        changed = ({**state, **policy, 'updated_at': now}
+                   if any(state.get(key) != value for key, value in policy.items()) else None)
+        return result, changed
+    leases = _active_leases(state, now) if 'leases' in state else {}
+    leases[owner] = now + ttl
+    state.update(policy, last_started_at=now, next_allowed_at=now + spacing)
+    return Admission(True), _lease_state(state, leases, now)
 
 
 class FirestoreHostStore:
@@ -91,12 +163,36 @@ class FirestoreHostStore:
 
         return perform(self.client.transaction(max_attempts=8))
 
-    def acquire(self, host, owner, delay, ttl):
+    def acquire(self, host, owner, delay, ttl, max_concurrency=1, robots_delay=None):
         return self._transaction(host, lambda state, now:
-                                 acquire_state(state, now, owner, host, delay, ttl))
+                                 acquire_state(state, now, owner, host, delay, ttl,
+                                               max_concurrency, robots_delay))
+
+    def availability(self, hosts, delay, max_concurrency=1, robots_delays=None):
+        """Batch advisory reads, using server times just like atomic acquire."""
+        robots_delays = robots_delays or {}
+        references = {hashlib.sha256(host.encode()).hexdigest(): host for host in hosts}
+        result = {}
+        keys = list(references)
+        for offset in range(0, len(keys), 100):
+            batch = [self.collection.document(key) for key in keys[offset:offset + 100]]
+            for snapshot in self.client.get_all(batch):
+                host = references[snapshot.id]
+                result[host] = admission_state(snapshot.to_dict() or {}, snapshot.read_time.timestamp(),
+                    delay, max_concurrency, robots_delays.get(host))
+        # Missing snapshots are not permission to make an uncoordinated start.
+        for host in hosts:
+            result.setdefault(host, Admission(False, 1.))
+        return result
 
     def renew(self, host, owner, ttl):
         def operation(state, now):
+            if 'leases' in state and _legacy_owner(state) != owner:
+                leases = _active_leases(state, now)
+                if owner not in leases:
+                    return False, None
+                leases[owner] = now + ttl
+                return True, _lease_state(state, leases, now)
             if state.get('owner') != owner or float(state.get('lease_until', 0)) <= now:
                 return False, None
             return True, {**state, 'lease_until': now + ttl, 'updated_at': now}
@@ -104,6 +200,12 @@ class FirestoreHostStore:
 
     def release(self, host, owner):
         def operation(state, now):
+            if 'leases' in state and _legacy_owner(state) != owner:
+                if owner not in state['leases']:
+                    return False, None
+                leases = _active_leases(state, now)
+                leases.pop(owner, None)
+                return True, _lease_state(state, leases, now)
             if state.get('owner') != owner:
                 return False, None
             return True, {**state, 'owner': None, 'lease_until': 0., 'updated_at': now}
@@ -111,7 +213,9 @@ class FirestoreHostStore:
 
     def defer(self, host, owner, seconds):
         def operation(state, now):
-            if state.get('owner') != owner or float(state.get('lease_until', 0)) <= now:
+            owned = (owner in _active_leases(state, now) if 'leases' in state and _legacy_owner(state) != owner else
+                     state.get('owner') == owner and float(state.get('lease_until', 0)) > now)
+            if not owned:
                 return False, None
             return True, {**state, 'cooldown_until': max(float(state.get('cooldown_until', 0)), now + seconds),
                           'updated_at': now}
@@ -203,36 +307,59 @@ class HostLease:
 
 class SharedHostCoordinator:
     def __init__(self, store, lease_seconds=180, poll_seconds=5,
-                 clock=time.monotonic, sleep=time.sleep):
+                 clock=time.monotonic, sleep=time.sleep, max_concurrency=1):
         self.store = store
         self.lease_seconds = _seconds(lease_seconds, 'lease_seconds', positive=True)
         self.poll_seconds = _seconds(poll_seconds, 'poll_seconds', positive=True)
         self.clock, self.sleep = clock, sleep
+        self.max_concurrency = _capacity(max_concurrency)
 
-    def acquire(self, host, delay=3, cancelled=None, guard=None):
+    def try_acquire(self, host, delay=3, cancelled=None, guard=None, robots_delay=None):
+        """Try once without sleeping; return (lease or None, admission)."""
         host = normalize_host(host)
         delay = _seconds(delay, 'delay')
+        if robots_delay is not None:
+            robots_delay = _seconds(robots_delay, 'robots_delay')
         cancelled = cancelled or (lambda: False)
         guard = guard or (lambda: None)
+        guard()
+        if cancelled():
+            raise HostLeaseLost('Crawler ownership lost while waiting for ' + host)
         owner = uuid.uuid4().hex
-        while True:
-            guard()
-            if cancelled():
-                raise HostLeaseLost('Crawler ownership lost while waiting for ' + host)
-            started = self.clock()
+        started = self.clock()
+        # Preserve the original adapter contract for callers using the legacy
+        # single-permit policy (including in-memory stores and existing tests).
+        if self.max_concurrency == 1 and robots_delay is None:
             result = self.store.acquire(host, owner, delay, self.lease_seconds)
-            if result.acquired:
-                # Count Firestore request latency against our local safe lifetime.
-                lease = HostLease(self, host, owner, started + self.lease_seconds, cancelled, guard)
-                try:
-                    lease.check()
-                except Exception:
-                    lease.release()
-                    raise
+        else:
+            result = self.store.acquire(host, owner, delay, self.lease_seconds,
+                                        self.max_concurrency, robots_delay)
+        if not result.acquired:
+            return None, result
+        # Count Firestore request latency against our local safe lifetime.
+        lease = HostLease(self, host, owner, started + self.lease_seconds, cancelled, guard)
+        try:
+            lease.check()
+        except Exception:
+            lease.release()
+            raise
+        return lease, result
+
+    def acquire(self, host, delay=3, cancelled=None, guard=None, robots_delay=None):
+        while True:
+            lease, result = self.try_acquire(host, delay, cancelled, guard, robots_delay)
+            if lease is not None:
                 return lease
             if result.cooldown_seconds > 120:
                 raise SharedHostCooldown(host, result.cooldown_seconds)
             self.sleep(min(self.poll_seconds, max(.05, result.wait_seconds)))
+
+    def availability(self, hosts, delay=3, robots_delays=None):
+        hosts = list(dict.fromkeys(normalize_host(host) for host in hosts))
+        delay = _seconds(delay, 'delay')
+        robots_delays = {normalize_host(host): _seconds(value, 'robots_delay')
+                         for host, value in (robots_delays or {}).items() if value is not None}
+        return self.store.availability(hosts, delay, self.max_concurrency, robots_delays)
 
     def defer(self, host, seconds):
         self.store.cooldown(normalize_host(host), _seconds(seconds, 'cooldown'))

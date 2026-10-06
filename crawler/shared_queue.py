@@ -252,14 +252,18 @@ class SharedQueue:
                      option=self.client.write_option(last_update_time=snapshot.update_time))
         batch.commit(timeout=60)
 
-    def claim(self, limit=MAX_CLAIMS, per_outlet=4, excluded_outlets=(), inflight=None, phase='publisher'):
+    def claim(self, limit=MAX_CLAIMS, per_outlet=4, excluded_outlets=(), inflight=None, phase='publisher',
+              admit=None, prepare_admission=None):
         """Claim up to ``limit`` URLs using a bounded indexed due_at query.
 
         ``per_outlet`` is per instance; shared HTTP pacing is enforced separately.
         Publisher pagination rotates locally around saturated outlets. Recovery
         always starts with the oldest due work: a small recovery reservation
         must not skip the rest of its page when new work keeps arriving.
-        No corpus-wide scan occurs on refill.
+        No corpus-wide scan occurs on refill. ``prepare_admission`` may batch
+        read advisory host availability for a page; ``admit(item)`` then leaves
+        unavailable work untouched in the queue. These callbacks never replace
+        the fenced article transaction or the network request's host admission.
         """
         due_field = _due_field(phase)
         if not 0 <= limit <= MAX_CLAIMS or per_outlet < 1:
@@ -294,10 +298,16 @@ class SharedQueue:
             if rotating:
                 self._cursors[phase] = cursor
                 self._random.shuffle(candidates)
+            if prepare_admission is not None:
+                prepare_admission([doc['item'] for candidate in candidates
+                                   if (doc := candidate.to_dict()).get('outlet') not in excluded
+                                   and active[doc.get('outlet')] < per_outlet])
             for candidate in candidates:
                 doc = candidate.to_dict()
                 outlet = doc.get('outlet')
                 if outlet in excluded or active[outlet] >= per_outlet:
+                    continue
+                if admit is not None and not admit(doc['item']):
                     continue
                 token = uuid.uuid4().hex
                 def reserve(transaction):

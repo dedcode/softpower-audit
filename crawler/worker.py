@@ -22,6 +22,8 @@ class Run:
         self.bucket=storage.Client().bucket(os.environ['CRAWL_BUCKET'])
         self.run_id=os.environ['RUN_ID'];self.prefix='runs/'+self.run_id+'/'
         self.config=json.loads(self.bucket.blob(self.prefix+'config.json').download_as_text())
+        if 'CRAWL_REQUEST_SPACING' in os.environ:
+            self.config['delay_seconds']=float(os.environ['CRAWL_REQUEST_SPACING'])
         self.country=self.config['country'];self.started=time.monotonic();self.execution=os.environ.get('CLOUD_RUN_EXECUTION','local')
         self.task_attempt=int(os.environ.get('CLOUD_RUN_TASK_ATTEMPT','0'));self.task_index=os.environ.get('CLOUD_RUN_TASK_INDEX','0');self.recovery=None
         self.lease=self.bucket.blob('control/worker-lease.json');self.owner=uuid.uuid4().hex

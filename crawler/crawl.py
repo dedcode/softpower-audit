@@ -1,5 +1,5 @@
 """Conservative HTTP retrieval; originals are retained independently of extraction."""
-import gzip,hashlib,ipaddress,json,os,socket,threading,time,uuid
+import gzip,hashlib,ipaddress,json,math,os,socket,threading,time,uuid
 from datetime import datetime,timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit,urljoin
@@ -35,15 +35,36 @@ class HostCooldown(requests.RequestException):
 class Fetcher:
     parse_initial=True
     def __init__(self,bucket,run_id,delay=3,max_attempts=3,host_coordinator=None):
+        if not math.isfinite(delay) or delay<0:raise ValueError('Request spacing must be nonnegative and finite')
         self.bucket=bucket;self.run_id=run_id;self.delay=delay;self.max_attempts=max_attempts
         self.lock=threading.Lock();self.hostlocks={};self.last={};self.robots={};self.queue_wait=threading.local();self.cooldowns={}
+        self.robots_delays={}
+        self.network={'http_in_flight':0,'http_started':0,'http_completed':0,'http_errors':0,
+                      'http_seconds':0.,'host_waiters':0,'host_wait_seconds':0.}
         self.host_coordinator=host_coordinator;self.shared_leases=threading.local()
         self.abort_event=threading.Event();self.request_context=threading.local()
         if self.host_coordinator is None and os.environ.get('CRAWL_FIRESTORE_DATABASE'):
             from google.cloud import firestore
             from shared_hosts import FirestoreHostStore,SharedHostCoordinator
             client=firestore.Client(project=bucket.client.project,database=os.environ['CRAWL_FIRESTORE_DATABASE'])
-            self.host_coordinator=SharedHostCoordinator(FirestoreHostStore(client))
+            self.host_coordinator=SharedHostCoordinator(FirestoreHostStore(client),
+                max_concurrency=int(os.environ.get('CRAWL_HOST_CONCURRENCY','4')),poll_seconds=1)
+    def network_snapshot(self):
+        with self.lock:return dict(self.network)
+    def dispatch_availability(self,hosts):
+        if self.host_coordinator is None:return None
+        with self.lock:delays={host:self.robots_delays[host] for host in hosts if host in self.robots_delays}
+        return self.host_coordinator.availability(hosts,delay=self.delay,robots_delays=delays)
+    @contextmanager
+    def network_wait(self):
+        began=time.monotonic()
+        with self.lock:self.network['host_waiters']+=1
+        try:
+            with self.queued_wait():yield
+        finally:
+            with self.lock:
+                self.network['host_waiters']-=1
+                self.network['host_wait_seconds']+=max(0.,time.monotonic()-began)
     def request_guard(self):
         guard=getattr(self.request_context,'guard',None)
         def check():
@@ -91,20 +112,25 @@ class Fetcher:
         finally:lock.release()
     @contextmanager
     def host_slot(self,host,delay=None):
+        if self.host_coordinator is not None:
+            # The shared coordinator independently limits starts and in-flight
+            # responses. A local mutex here would serialize the whole download
+            # again, defeating the shared capacity even inside one instance.
+            self.check_running()
+            with self.lock:robots_delay=self.robots_delays.get(host)
+            with self.network_wait():
+                lease=self.host_coordinator.acquire(host,max(self.delay,delay or 0),
+                    cancelled=self.abort_event.is_set,guard=self.request_guard(),robots_delay=robots_delay)
+            if not hasattr(self.shared_leases,'active'):self.shared_leases.active={}
+            with lease:
+                self.shared_leases.active[host]=lease
+                try:
+                    yield
+                    lease.check()
+                finally:self.shared_leases.active.pop(host,None)
+            return
         with self.queued_host_lock(host):
             self.check_running()
-            if self.host_coordinator is not None:
-                # One local contender per host polls the global lease. Its wait
-                # does not consume the article/browser's useful-work deadline.
-                with self.queued_wait():lease=self.host_coordinator.acquire(host,max(self.delay,delay or 0),cancelled=self.abort_event.is_set,guard=self.request_guard())
-                if not hasattr(self.shared_leases,'active'):self.shared_leases.active={}
-                with lease:
-                    self.shared_leases.active[host]=lease
-                    try:
-                        yield
-                        lease.check()
-                    finally:self.shared_leases.active.pop(host,None)
-                return
             self.wait_for_host_cooldown(host)
             gap=max(self.delay,delay or 0)-(time.monotonic()-self.last.get(host,0))
             if gap>0:
@@ -130,7 +156,7 @@ class Fetcher:
             lease=getattr(self.shared_leases,'active',{}).get(host)
             if lease is None:raise RuntimeError('Shared Retry-After requires the active host lease')
             lease.defer(seconds)
-        self.cooldowns[host]=max(self.cooldowns.get(host,0),time.monotonic()+seconds)
+        with self.lock:self.cooldowns[host]=max(self.cooldowns.get(host,0),time.monotonic()+seconds)
     def observe_response(self,url,status,retry_after=None):
         if status not in (429,503):return
         self.check_running()
@@ -152,15 +178,25 @@ class Fetcher:
         p=public_url(url)
         with self.host_slot(p.hostname,delay):
             self.check_running()
-            with requests.Session() as s:
-                s.trust_env=False
-                with s.get(url,headers={'User-Agent':UA,'Accept':'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'},timeout=(10,25),allow_redirects=False,stream=True) as r:
-                    if r.status_code in (429,503):self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
-                    data=bytearray();oversize=False;began=time.monotonic()
-                    for chunk in r.iter_content(65536):
-                        data.extend(chunk)
-                        if len(data)>MAX_BODY or time.monotonic()-began>40:oversize=True;break
-                    return r.status_code,requests.structures.CaseInsensitiveDict(r.headers),bytes(data[:MAX_BODY]),oversize
+            started=time.monotonic();completed=False
+            with self.lock:
+                self.network['http_started']+=1;self.network['http_in_flight']+=1
+            try:
+                with requests.Session() as s:
+                    s.trust_env=False
+                    with s.get(url,headers={'User-Agent':UA,'Accept':'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'},timeout=(10,25),allow_redirects=False,stream=True) as r:
+                        if r.status_code in (429,503):self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
+                        data=bytearray();oversize=False;began=time.monotonic()
+                        for chunk in r.iter_content(65536):
+                            data.extend(chunk)
+                            if len(data)>MAX_BODY or time.monotonic()-began>40:oversize=True;break
+                        completed=True
+                        return r.status_code,requests.structures.CaseInsensitiveDict(r.headers),bytes(data[:MAX_BODY]),oversize
+            finally:
+                with self.lock:
+                    self.network['http_in_flight']-=1
+                    self.network['http_completed' if completed else 'http_errors']+=1
+                    self.network['http_seconds']+=max(0.,time.monotonic()-started)
     def policy(self,url):
         p=public_url(url);origin=p.scheme+'://'+p.netloc
         with self.queued_host_lock('robots:'+origin):
@@ -172,14 +208,18 @@ class Fetcher:
                     robot_url=urljoin(robot_url,headers['Location']);continue
                 break
             uri=self.put('runs/'+self.run_id+'/robots/'+key(origin)+'.json',json.dumps({'url':original,'final_url':robot_url,'status':code,'checked_at':now(),'body':body.decode('utf-8','replace')[:1000000]}),'application/json')
-            if code in (404,410):result=(None,True,self.delay,uri)
+            actual_delay=None
+            if code in (404,410):result=(None,True,self.delay,uri);actual_delay=0.
             elif code!=200 or large:result=(None,False,self.delay,uri)
             else:
                 parser=RobotFileParser();parser.parse(body.decode('utf-8','replace').splitlines())
-                delay=max(self.delay,parser.crawl_delay(AGENT) or parser.crawl_delay('*') or 0)
+                actual_delay=float(parser.crawl_delay(AGENT) or parser.crawl_delay('*') or 0)
                 rate=parser.request_rate(AGENT) or parser.request_rate('*')
-                if rate:delay=max(delay,rate.seconds/rate.requests)
+                if rate:actual_delay=max(actual_delay,rate.seconds/rate.requests)
+                delay=max(self.delay,actual_delay)
                 result=(parser,True,delay,uri)
+            if actual_delay is not None:
+                with self.lock:self.robots_delays[p.hostname]=max(actual_delay,self.robots_delays.get(p.hostname,0))
             self.robots[origin]=result;return result
     def fetch(self,item,run,country):
         url=item['url'];article_id=key(url)

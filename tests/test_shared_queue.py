@@ -208,6 +208,47 @@ class SharedQueueTests(unittest.TestCase):
                   'max_total_attempts': 1000}
         return self.queue.initialize(items, done or ResultIndex(), config)
 
+    def test_advisory_admission_leaves_blocked_articles_unchanged_and_claims_other_hosts(self):
+        items = [article(i, 'blocked.ke' if i < 4 else 'ready.ke') for i in range(8)]
+        self.seed(items)
+        blocked = {article_key(item['url']): self.queue.articles.document(article_key(item['url'])).get().to_dict()
+                   for item in items if item['outlet'] == 'blocked.ke'}
+        prepared = []
+        claims = self.queue.claim(8, per_outlet=8, prepare_admission=lambda page: prepared.extend(page),
+                                  admit=lambda item: item['outlet'] == 'ready.ke')
+        self.assertEqual(len(prepared), 8)
+        self.assertEqual(len(claims), 4)
+        self.assertTrue(all(claim.item['outlet'] == 'ready.ke' for claim in claims))
+        for aid, before in blocked.items():
+            self.assertEqual(self.queue.articles.document(aid).get().to_dict(), before)
+        summary = self.queue.summary()
+        self.assertEqual((summary['processed'], summary['attempts'], summary['retries']), (0, 0, 0))
+        # Becoming ready requires no retry/handoff and retains all original rows.
+        later = self.queue.claim(8, per_outlet=8, admit=lambda item: True)
+        self.assertEqual({claim.article_id for claim in later}, set(blocked))
+
+    def test_admission_preparation_is_bounded_and_skips_locally_saturated_outlets(self):
+        self.seed([article(i, 'saturated.ke' if i % 2 else 'waiting.ke') for i in range(400)])
+        prepared = []
+        before = self.database.query_results
+        self.assertEqual(self.queue.claim(48, inflight={'saturated.ke': 4},
+            prepare_admission=lambda page: prepared.extend(page), admit=lambda item: False), [])
+        self.assertTrue(prepared)
+        self.assertTrue(all(item['outlet'] == 'waiting.ke' for item in prepared))
+        self.assertLessEqual(self.database.query_results - before, 384)
+        self.assertTrue(all(row.get('state') == 'ready' for path, row in self.database.data.items()
+                            if '/articles/' in path))
+
+    def test_admission_failure_does_not_claim_or_finish_articles(self):
+        self.seed([article(1)])
+        def unavailable(_):
+            raise RuntimeError('Host readiness service unavailable')
+        with self.assertRaisesRegex(RuntimeError, 'readiness service'):
+            self.queue.claim(1, prepare_admission=unavailable, admit=lambda item: True)
+        rows = [row for path, row in self.database.data.items() if '/articles/' in path]
+        self.assertEqual(rows[0]['state'], 'ready')
+        self.assertNotIn('claim_token', rows[0])
+
     def test_import_preserves_terminal_counts_and_never_requeues_saved_urls(self):
         items = [article(i, 'one.ke' if i < 3 else 'two.ke') for i in range(5)]
         done = ResultIndex()

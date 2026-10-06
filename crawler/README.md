@@ -766,3 +766,81 @@ had been claimed or advanced by r10 (12 archive, 11 browser). Stored checkpoints
 confirmed old Citizen TV homepage redirects now skip rendering and proceed to
 archive recovery. This directly verifies the scheduling and homepage fixes;
 claiming recovery work is not the same as finishing it or recovering full text.
+
+### Separate start spacing from simultaneous downloads (6 October)
+
+The old fleet-wide host lease was exclusive for the full HTTP response. Ten
+instances therefore had the same single-download capacity for a hostname as
+one instance. The new coordinator maintains separately fenced, expiring permits
+per host. The deployment defaults to four simultaneous responses per hostname
+and one second between starts; verified stricter robots rules and shared
+Retry-After cooldowns still take precedence. Legacy exclusive leases remain
+exclusive until released or expired. Old imposed spacing can be lowered only
+once a robots lookup distinguishes that default from the site's actual rule.
+
+`--host-concurrency` and `--request-spacing` set `CRAWL_HOST_CONCURRENCY` and
+`CRAWL_REQUEST_SPACING`. The latter overrides the stored run's previous default
+without rewriting its manifest or losing checkpoint compatibility. Local HTTP
+mutexes no longer wrap shared-coordinator downloads. Browser main documents
+hold a permit for the render, release it before a redirect's next robots check,
+and renew/check/release it even across callback threads or exceptions. Browser
+script/XHR traffic retains the existing resource policy and request-count cap.
+
+Before claiming new publisher articles, workers batch-read host availability
+and leave known-full, cooling, or not-yet-due hosts queued. Each refill admits
+at most one new article per actual URL hostname. The atomic network admission
+still protects against races after that advisory read. Later redirects, robots
+requests and recovery requests may wait safely; this is not a claim that every
+mid-article wait has become asynchronous. Recovery checkpoints and retry counts
+are unchanged. Full hosts are rechecked within three seconds rather than using
+the empty-queue 30-second backoff.
+
+Worker progress now distinguishes actual HTTP requests in flight, HTTP starts,
+responses completed, transport errors, response time, admission waiters and time
+spent acquiring coordinator permits. Article slots are not network requests.
+Counters are per worker attempt; live gauges exclude stopped/expired workers.
+Admission time includes Firestore latency and excludes robots-cache mutex waits.
+
+`tests/verify_host_scaling.py` is an opt-in local HTTP-only benchmark with 48
+article threads per simulated instance. Three slow local hosts stayed near 14.4
+requests/second with the old cap at 1, 2, 5 and 10 instances. With four permits,
+they reached about 55 requests/second and 12 overlapping downloads (3.8x).
+With 120 independent hosts, 1/2/5/10 instances reached about 209/373/788/1,151
+requests/second and up to 48/96/240/480 actual downloads. All host bounds and
+spacing assertions passed, including a real fixture 429 and a 32-way admission
+race. These are synthetic results excluding Firestore latency, dispatch,
+extraction and storage, not a production throughput forecast.
+
+An isolated real-Firestore test admitted exactly four of 20 competing clients,
+with zero transaction errors. SDK batch reads, independent lease release/renew,
+stale ownership, cooldowns, 20-second robots policy and legacy migration passed.
+All six test documents were deleted; production coordination was untouched.
+
+The Firestore integration check is reproducible with
+`python tests/verify_shared_host_capacity.py --output /tmp/shared-host-proof.json`.
+It writes only to its unique verification collection and deletes its own test
+documents. All 348 regression tests, including local Chrome fixtures, passed.
+
+Cloud Build `ec32a7d2-7661-42f7-9d4b-15f15f7952c4` succeeded and its uploaded
+crawler code matched the tested files. The atomic handover retired r10 and
+transferred the queue to `softpower-crawler-2z4zs`, launched by controller
+`ed1229b7-c98b-48f4-8fba-8301ec89f5a2` at 06:22:06 UTC. All 34,037 finished URLs,
+including 29,228 saved texts, were retained. Launch/reservation and verification
+proofs live under `runs/ke-full-20261003-192939/distributed/phased-r11/`.
+
+Production verification at 06:25:16–06:30:21 UTC kept all ten tasks on attempt
+zero, with unique article assignments and valid saved original/text objects.
+Both `standardmedia.co.ke` and `www.standardmedia.co.ke` reached four overlapping
+permits; `archive.org` reached two. No observed host exceeded four. The window
+saved 80 texts and finished 95 URLs in 305 seconds; this short changing-workload
+sample does not establish a sustained end-to-end speedup.
+
+The Archive availability API still had an inherited three-second default because
+that API path does not call the publisher robots cache. Its current official
+[robots document](https://archive.org/robots.txt) was checked and had no crawl
+interval or request-rate directive for this path. At 06:33:08 UTC, an atomic
+compare-and-swap changed only `delay_seconds`, `default_delay_seconds` and
+`robots_delay_seconds` to 1, 1 and 0 respectively. Active permits and cooldown
+fields were untouched. Evidence is `archive-default-migration.json` under the
+r11 prefix. Subsequent admissions retain this setting; stricter learned rules
+still override it.

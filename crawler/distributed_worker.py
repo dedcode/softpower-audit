@@ -9,6 +9,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlsplit
 
 from google.api_core.exceptions import NotFound, PreconditionFailed
 from google.cloud import firestore, bigquery
@@ -282,6 +283,7 @@ class DistributedRun(Run):
         slot immediately; it does not finish the article or consume a retry.
         """
         from collections import Counter
+        self.dispatch_retry_seconds = None
         with self.claim_lock:
             active = list(self.claims.values())
         capacity = self.config['workers'] - len(active)
@@ -290,13 +292,65 @@ class DistributedRun(Run):
         recovery_limit = min(2, max(1, self.config['workers'] // 8))
         publisher_limit = max(1, self.config['workers'] - 2 * recovery_limit)
         selected = []
+        # Admission here is advisory: a peer may start a request between this
+        # read and execution, so the actual request still takes an atomic host
+        # lease. Cache each hostname once per refill and dispatch at most one
+        # article for it, instead of filling every task with waiting URLs.
+        availability = {}
+        considered = set()
+        readiness_disabled = False
+        dispatch_availability = getattr(self.fetcher, 'dispatch_availability', None)
+
+        def hostname(item):
+            try:
+                host = urlsplit(item['url']).hostname
+                return host.lower().rstrip('.').encode('idna').decode('ascii') if host else None
+            except (KeyError, ValueError, UnicodeError):
+                # The extraction pipeline owns invalid-URL classification.
+                return None
+
+        def prepare_admission(items):
+            nonlocal readiness_disabled
+            if readiness_disabled:
+                return
+            hosts = {host for item in items if (host := hostname(item)) and host not in availability}
+            if hosts:
+                states = dispatch_availability(sorted(hosts))
+                if states is None:
+                    readiness_disabled = True
+                else:
+                    availability.update(states)
+                    # A full host may free a permit before its crash-recovery
+                    # lease expires. Recheck it within three seconds instead of
+                    # treating blocked URLs like an empty queue and backing off
+                    # for thirty seconds with otherwise-idle article capacity.
+                    waits = [state.wait_seconds for state in states.values() if state.wait_seconds > 0]
+                    hint = max(.25, min([3., *waits]))
+                    previous = self.dispatch_retry_seconds
+                    self.dispatch_retry_seconds = hint if previous is None else min(previous, hint)
+
+        def admit(item):
+            if readiness_disabled:
+                return True
+            host = hostname(item)
+            if host is None:
+                return True
+            state = availability.get(host)
+            if host in considered or state is None or not state.acquired:
+                return False
+            considered.add(host)
+            return True
+
         for phase, limit in (('publisher', publisher_limit), ('browser', recovery_limit), ('archive', recovery_limit)):
             phase_claims = [claim for claim in active if claim.phase == phase]
             available = min(capacity, max(0, limit - len(phase_claims)))
             if not available:
                 continue
+            admission = ({'admit': admit, 'prepare_admission': prepare_admission}
+                         if phase == 'publisher' and not self.verification and callable(dispatch_availability) else {})
             claims = self.queue.claim(limit=available, per_outlet=self.config.get('per_outlet_workers', 4),
-                                      inflight=Counter(claim.item['outlet'] for claim in phase_claims), phase=phase)
+                                      inflight=Counter(claim.item['outlet'] for claim in phase_claims), phase=phase,
+                                      **admission)
             selected.extend(claims)
             capacity -= len(claims)
         return selected
@@ -322,6 +376,9 @@ class DistributedRun(Run):
                     'active_stages': stages, 'elapsed_seconds': round(elapsed),
                     'estimated_compute_usd': round(elapsed * (float(os.environ.get('CRAWL_CPU', '4')) * .000018
                                                   + float(os.environ.get('CRAWL_MEMORY_GIB', '4')) * .000002), 4)}
+            network_snapshot = getattr(self.fetcher, 'network_snapshot', None)
+            if callable(network_snapshot):
+                data['network'] = network_snapshot()
             self.lease_update()
             lost = self.queue.heartbeat(claims, worker_state=data)
             if lost:
@@ -361,9 +418,18 @@ class DistributedRun(Run):
                        estimated_compute_usd=sum(record.get('estimated_compute_usd', 0) for record in current),
                        result_table=self.config['dataset'] + '.crawl_results',
                        source_table=self.config['source_table'],
-                       limits={key: self.config.get(key) for key in ('workers', 'per_outlet_workers',
+                       limits={key: self.config.get(key) for key in ('workers', 'per_outlet_workers', 'delay_seconds',
                                'max_runtime_seconds', 'max_response_bytes', 'max_total_attempts')})
         summary['limits']['workers'] = self.configured_workers
+        if any(isinstance(record.get('network'), dict) for record in current):
+            # Gauges count only live workers; cumulative counters include the
+            # latest attempt of workers that have finished this execution.
+            gauges = {'http_in_flight', 'host_waiters'}
+            fields = (*gauges, 'http_started', 'http_completed', 'http_errors',
+                      'http_seconds', 'host_wait_seconds')
+            summary['network'] = {field: sum(record.get('network', {}).get(field, 0)
+                                            for record in (live if field in gauges else current))
+                                  for field in fields}
         previous_terminal = self.publication_gate()
         if previous_terminal is not None:
             return previous_terminal
@@ -574,6 +640,8 @@ class DistributedRun(Run):
                             if capacity and time.monotonic() >= next_refill:
                                 claims = self.claim_available()
                                 refill_delay = 3 if claims else min(30, max(5, refill_delay * 2))
+                                if not claims and self.dispatch_retry_seconds is not None:
+                                    refill_delay = min(refill_delay, self.dispatch_retry_seconds)
                                 next_refill = time.monotonic() + refill_delay
                                 for claim in claims:
                                     with self.claim_lock:

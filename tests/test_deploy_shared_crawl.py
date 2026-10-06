@@ -27,6 +27,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('CRAWL_DISTRIBUTED=1', env)
         self.assertIn('CRAWL_FIRESTORE_DATABASE=softpower-crawl', env)
         self.assertIn('CRAWL_ROTATE_SECONDS=518400', env)
+        self.assertIn('CRAWL_HOST_CONCURRENCY=4', env)
+        self.assertIn('CRAWL_REQUEST_SPACING=1.0', env)
 
     def test_single_instance_preserves_legacy_path(self):
         args = deploy_crawler.arguments(['--run-id', 'pilot'])
@@ -37,7 +39,9 @@ class DeploymentTests(unittest.TestCase):
         self.assertNotIn('CRAWL_FIRESTORE_DATABASE=', next(argument for argument in command if argument.startswith('--set-env-vars=')))
 
     def test_invalid_instances_and_database_are_rejected(self):
-        for extra in (['--instances', '0'], ['--instances', '-1'], ['--firestore-database', 'unsafe,CRAWL_CPU=99']):
+        for extra in (['--instances', '0'], ['--instances', '-1'], ['--firestore-database', 'unsafe,CRAWL_CPU=99'],
+                      ['--host-concurrency','0'],['--host-concurrency','17'],['--request-spacing','-1'],
+                      ['--request-spacing','nan'],['--request-spacing','inf']):
             with self.subTest(extra=extra), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 deploy_crawler.arguments(['--run-id', 'test'] + extra)
 

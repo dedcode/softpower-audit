@@ -181,17 +181,42 @@ class Pipeline(Fetcher):
    with self.lock:self.live.pop(aid,None)
  def render(self,url):
   request_guard=self.request_guard()
+  document_lease=None;document_lock=threading.RLock()
+  def release_document():
+   nonlocal document_lease
+   lease,document_lease=document_lease,None
+   if lease is not None:lease.release()
   def authorize(request_url,document):
-   with self.guarded_requests(request_guard):
+   nonlocal document_lease
+   with document_lock,self.guarded_requests(request_guard):
     request_guard()
     parsed=public_url(request_url)
     if document:
+     # A redirect starts another document. Free the old response permit before
+     # its robots check, which may itself need a permit on the same hostname.
+     # The lease is a shared coordinator object, not a thread-owned mutex: the
+     # isolated browser may invoke authorizations on a different callback thread.
+     release_document()
      parser,allowed,delay,_=self.policy(request_url)
      if not allowed or (parser and not parser.can_fetch(UA,request_url)):return False
-     with self.host_slot(parsed.hostname,delay):pass
+     if self.host_coordinator is None:
+      with self.host_slot(parsed.hostname,delay):pass
+     else:
+      with self.lock:robots_delay=self.robots_delays.get(parsed.hostname)
+      with self.network_wait():
+       document_lease=self.host_coordinator.acquire(parsed.hostname,max(self.delay,delay or 0),
+        cancelled=self.abort_event.is_set,guard=request_guard,robots_delay=robots_delay)
+      document_lease.start_renewal()
+    if document_lease is not None:document_lease.check()
     return True
   def response(request_url,status,retry_after):
    with self.guarded_requests(request_guard):
     request_guard()
     self.observe_response(request_url,status,retry_after)
-  return render_isolated(url,authorize,queue_wait=self.host_queue_observer(),response=response)
+  try:
+   result=render_isolated(url,authorize,queue_wait=self.host_queue_observer(),response=response)
+   with document_lock:
+    if document_lease is not None:document_lease.check()
+   return result
+  finally:
+   with document_lock:release_document()
