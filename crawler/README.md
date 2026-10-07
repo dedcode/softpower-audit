@@ -844,3 +844,18 @@ compare-and-swap changed only `delay_seconds`, `default_delay_seconds` and
 fields were untouched. Evidence is `archive-default-migration.json` under the
 r11 prefix. Subsequent admissions retain this setting; stricter learned rules
 still override it.
+
+### Archive capacity (r12, 2026-10-07)
+
+Archive recovery can borrow otherwise unused publisher slots, up to
+`CRAWL_ARCHIVE_SLOTS` per task (default 2). Publisher admission runs first;
+the total remains bounded by the configured article workers and memory
+safeguards. Browser recovery retains its separate small pool.
+
+`--archive-concurrency` sets a separate fleet-wide download cap for
+`archive.org` and `web.archive.org`. It does not change publisher host limits,
+request spacing, robots rules, ownership fencing, or shared 429/503 cooldowns.
+The production trial uses eight archive article slots per task and eight
+simultaneous downloads per archive hostname, with the existing ten instances.
+These are capacity limits, not a guarantee of throughput. Compare saved full
+texts and errors over time; adding waiting article jobs alone is not success.

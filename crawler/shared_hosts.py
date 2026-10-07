@@ -307,12 +307,14 @@ class HostLease:
 
 class SharedHostCoordinator:
     def __init__(self, store, lease_seconds=180, poll_seconds=5,
-                 clock=time.monotonic, sleep=time.sleep, max_concurrency=1):
+                 clock=time.monotonic, sleep=time.sleep, max_concurrency=1, host_limits=None):
         self.store = store
         self.lease_seconds = _seconds(lease_seconds, 'lease_seconds', positive=True)
         self.poll_seconds = _seconds(poll_seconds, 'poll_seconds', positive=True)
         self.clock, self.sleep = clock, sleep
         self.max_concurrency = _capacity(max_concurrency)
+        self.host_limits = {normalize_host(host): _capacity(limit)
+                            for host, limit in (host_limits or {}).items()}
 
     def try_acquire(self, host, delay=3, cancelled=None, guard=None, robots_delay=None):
         """Try once without sleeping; return (lease or None, admission)."""
@@ -329,11 +331,12 @@ class SharedHostCoordinator:
         started = self.clock()
         # Preserve the original adapter contract for callers using the legacy
         # single-permit policy (including in-memory stores and existing tests).
-        if self.max_concurrency == 1 and robots_delay is None:
+        capacity = self.host_limits.get(host, self.max_concurrency)
+        if capacity == 1 and robots_delay is None:
             result = self.store.acquire(host, owner, delay, self.lease_seconds)
         else:
             result = self.store.acquire(host, owner, delay, self.lease_seconds,
-                                        self.max_concurrency, robots_delay)
+                                        capacity, robots_delay)
         if not result.acquired:
             return None, result
         # Count Firestore request latency against our local safe lifetime.
@@ -359,7 +362,11 @@ class SharedHostCoordinator:
         delay = _seconds(delay, 'delay')
         robots_delays = {normalize_host(host): _seconds(value, 'robots_delay')
                          for host, value in (robots_delays or {}).items() if value is not None}
-        return self.store.availability(hosts, delay, self.max_concurrency, robots_delays)
+        result = {}
+        for capacity in {self.host_limits.get(host, self.max_concurrency) for host in hosts}:
+            group = [host for host in hosts if self.host_limits.get(host, self.max_concurrency) == capacity]
+            result.update(self.store.availability(group, delay, capacity, robots_delays))
+        return result
 
     def defer(self, host, seconds):
         self.store.cooldown(normalize_host(host), _seconds(seconds, 'cooldown'))

@@ -74,6 +74,23 @@ class SharedHostTests(unittest.TestCase):
     def document(self):
         return next(iter(self.database.documents.values()))
 
+    def test_archive_override_matches_admission_and_keeps_publisher_limit(self):
+        coordinator = SharedHostCoordinator(self.store, clock=self.clock.now,
+            sleep=self.clock.advance, max_concurrency=4, host_limits={'web.archive.org': 8})
+        leases = []
+        for host, limit in [('web.archive.org', 8), ('publisher.org', 4)]:
+            for _ in range(limit):
+                lease, state = coordinator.try_acquire(host, delay=1, robots_delay=0)
+                self.assertTrue(state.acquired)
+                leases.append(lease)
+                self.clock.advance(1)
+            self.assertFalse(coordinator.availability([host], delay=1)[host].acquired)
+            self.assertIsNone(coordinator.try_acquire(host, delay=1)[0])
+        for lease in leases:
+            lease.release()
+        self.assertTrue(all(s.acquired for s in coordinator.availability(
+            ['web.archive.org', 'publisher.org'], delay=1).values()))
+
     def test_transaction_admits_only_one_owner_under_simultaneous_claims(self):
         replies = []
         barrier = threading.Barrier(8)

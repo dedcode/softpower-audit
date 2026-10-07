@@ -291,6 +291,10 @@ class DistributedRun(Run):
             return []
         recovery_limit = min(2, max(1, self.config['workers'] // 8))
         publisher_limit = max(1, self.config['workers'] - 2 * recovery_limit)
+        # Publisher claims come first. Recovery may borrow unused capacity,
+        # bounded independently so a slow archive cannot fill every thread.
+        archive_limit = min(self.config['workers'], max(recovery_limit,
+                            int(os.environ.get('CRAWL_ARCHIVE_SLOTS', '2'))))
         selected = []
         # Admission here is advisory: a peer may start a request between this
         # read and execution, so the actual request still takes an atomic host
@@ -341,7 +345,7 @@ class DistributedRun(Run):
             considered.add(host)
             return True
 
-        for phase, limit in (('publisher', publisher_limit), ('browser', recovery_limit), ('archive', recovery_limit)):
+        for phase, limit in (('publisher', publisher_limit), ('browser', recovery_limit), ('archive', archive_limit)):
             phase_claims = [claim for claim in active if claim.phase == phase]
             available = min(capacity, max(0, limit - len(phase_claims)))
             if not available:

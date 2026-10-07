@@ -30,6 +30,15 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('CRAWL_HOST_CONCURRENCY=4', env)
         self.assertIn('CRAWL_REQUEST_SPACING=1.0', env)
 
+    def test_archive_limits_are_separate_from_publisher_downloads(self):
+        args = deploy_crawler.arguments(['--run-id', 'test', '--instances', '10',
+            '--archive-concurrency', '8', '--archive-slots', '8'])
+        env = next(x for x in deploy_crawler.job_deploy_arguments(args, 'test:image')
+                   if x.startswith('--set-env-vars='))
+        self.assertIn('CRAWL_HOST_CONCURRENCY=4', env)
+        self.assertIn('CRAWL_ARCHIVE_CONCURRENCY=8', env)
+        self.assertIn('CRAWL_ARCHIVE_SLOTS=8', env)
+
     def test_single_instance_preserves_legacy_path(self):
         args = deploy_crawler.arguments(['--run-id', 'pilot'])
         command = deploy_crawler.job_deploy_arguments(args, 'test:image')
@@ -41,7 +50,9 @@ class DeploymentTests(unittest.TestCase):
     def test_invalid_instances_and_database_are_rejected(self):
         for extra in (['--instances', '0'], ['--instances', '-1'], ['--firestore-database', 'unsafe,CRAWL_CPU=99'],
                       ['--host-concurrency','0'],['--host-concurrency','17'],['--request-spacing','-1'],
-                      ['--request-spacing','nan'],['--request-spacing','inf']):
+                      ['--request-spacing','nan'],['--request-spacing','inf'],
+                      ['--archive-concurrency','0'],['--archive-concurrency','17'],
+                      ['--archive-slots','0'],['--archive-slots','49']):
             with self.subTest(extra=extra), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 deploy_crawler.arguments(['--run-id', 'test'] + extra)
 

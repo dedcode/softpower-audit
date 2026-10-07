@@ -48,7 +48,9 @@ class Fetcher:
             from shared_hosts import FirestoreHostStore,SharedHostCoordinator
             client=firestore.Client(project=bucket.client.project,database=os.environ['CRAWL_FIRESTORE_DATABASE'])
             self.host_coordinator=SharedHostCoordinator(FirestoreHostStore(client),
-                max_concurrency=int(os.environ.get('CRAWL_HOST_CONCURRENCY','4')),poll_seconds=1)
+                max_concurrency=int(os.environ.get('CRAWL_HOST_CONCURRENCY','4')),poll_seconds=1,
+                host_limits={host:int(os.environ.get('CRAWL_ARCHIVE_CONCURRENCY',os.environ.get('CRAWL_HOST_CONCURRENCY','4')))
+                             for host in ('archive.org','web.archive.org')})
     def network_snapshot(self):
         with self.lock:return dict(self.network)
     def dispatch_availability(self,hosts):

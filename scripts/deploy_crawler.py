@@ -27,6 +27,8 @@ def arguments(argv=None):
     parser.add_argument('--browser-slots', type=int, default=1)
     parser.add_argument('--instances', type=int, default=1, help='Cloud Run tasks sharing one crawl queue; each uses the run configuration workers count')
     parser.add_argument('--host-concurrency', type=int, default=4, help='Fleet-wide simultaneous HTTP downloads per hostname')
+    parser.add_argument('--archive-concurrency', type=int, default=4, help='Fleet-wide simultaneous downloads per archive hostname')
+    parser.add_argument('--archive-slots', type=int, default=2, help='Maximum archive article slots per task, borrowing idle publisher capacity')
     parser.add_argument('--request-spacing', type=float, default=1., help='Minimum seconds between request starts; stricter robots rules take precedence')
     parser.add_argument('--firestore-database', default='softpower-crawl')
     args = parser.parse_args(argv)
@@ -36,6 +38,8 @@ def arguments(argv=None):
         parser.error('Browser slots cannot exceed total heavy slots')
     if not 1 <= args.host_concurrency <= 16:
         parser.error('Host concurrency must be between 1 and 16')
+    if not 1 <= args.archive_concurrency <= 16 or not 1 <= args.archive_slots <= 48:
+        parser.error('Archive concurrency must be 1–16 and article slots 1–48')
     if not math.isfinite(args.request_spacing) or args.request_spacing < 0:
         parser.error('Request spacing must be nonnegative and finite')
     if not re.fullmatch(r'[a-z][a-z0-9-]{2,61}[a-z0-9]', args.firestore_database):
@@ -52,6 +56,8 @@ def job_deploy_arguments(args, image):
         'CRAWL_HEAVY_SLOTS': args.heavy_slots,
         'CRAWL_BROWSER_SLOTS': args.browser_slots,
         'CRAWL_HOST_CONCURRENCY': args.host_concurrency,
+        'CRAWL_ARCHIVE_CONCURRENCY': args.archive_concurrency,
+        'CRAWL_ARCHIVE_SLOTS': args.archive_slots,
         'CRAWL_REQUEST_SPACING': args.request_spacing,
         'CRAWL_ROTATE_SECONDS': 518400,
         'CRAWL_DISTRIBUTED': int(args.instances > 1),

@@ -2,6 +2,7 @@ import gzip
 import json
 import time
 import unittest
+from unittest.mock import patch
 from test_distributed_worker import bare_run, claim
 
 
@@ -123,6 +124,20 @@ class DistributedPhasesTests(unittest.TestCase):
         run.queue.claim.side_effect = [[], [], [item]]
         self.assertEqual(run.claim_available(), [item])
         self.assertEqual([c.kwargs['phase'] for c in run.queue.claim.call_args_list], ['publisher', 'browser', 'archive'])
+
+    def test_archive_borrows_idle_slots_but_never_exceeds_total_capacity(self):
+        with patch.dict('os.environ', {'CRAWL_ARCHIVE_SLOTS': '8'}):
+            run = bare_run()
+            run.config['workers'] = 48
+            run.queue.claim.return_value = []
+            run.claim_available()
+            self.assertEqual(run.queue.claim.call_args.kwargs['limit'], 8)
+            for index in range(44):
+                item = claim()
+                item.article_id = 'busy-' + str(index)
+                run.claims[item.article_id] = item
+            run.claim_available()
+            self.assertEqual(run.queue.claim.call_args.kwargs['limit'], 4)
 
     def test_browser_backlog_does_not_block_archive_admission(self):
         run = bare_run()
