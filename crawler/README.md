@@ -920,3 +920,11 @@ and parallelism change from ten to one. The durable shared queue is retained;
 this is not a switch to the legacy single-worker manifest crawler. Future
 redeployment of this mode uses `--instances 1 --shared-queue`. Deployment tests
 cover both the legacy default and this one-instance shared-queue configuration.
+
+Execution `softpower-crawler-656gd` verified exactly one live task, 48 article
+slots, the existing Firestore queue, and no native retries. It resumed from
+77,371 finished URLs / 59,755 saved texts and reached 77,373 / 59,756 during
+verification. The previous ten-task execution and its controller are retired.
+Launch, reservation and verification evidence is under
+`distributed/single-instance-20261008/`. CPU and memory allocation are reduced
+90%; storage costs and publisher pacing are unchanged.
