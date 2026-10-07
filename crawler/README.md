@@ -873,3 +873,24 @@ Wayback reached six overlapping permits, exceeding the old four-permit limit;
 no observed host exceeded its configured bound. The short pre-handover sample
 was 197 saved texts/hour. This is initial evidence, not a sustained or matched
 workload speedup claim. Connection errors and shared archive pacing remain.
+
+### Database retry recovery (r13, 2026-10-07)
+
+The r12 fleet reached 76,827 finished URLs / 59,339 saved texts, then repeated
+Firestore `InvalidArgument: The referenced transaction has expired or is no
+longer valid` failures restarted all tasks. Their persisted memory restart
+counters were zero. The previous fallback incorrectly interpreted any native
+retry as memory pressure and reduced each task from 48 article slots to one.
+
+Expired transaction responses now retry with a fresh SDK transaction/wrapper,
+with bounded jittered backoff. Other invalid arguments and ambiguous network
+commit failures are not replayed by this additional retry layer. Existing
+queue and host ownership fences are rechecked against fresh state. Capacity
+reduction now requires an observed memory restart; native task attempt numbers
+alone do not reduce capacity. Proactive memory recycling and isolated process
+limits remain active. All 354 tests, including Chrome fixtures, passed.
+
+At diagnosis the archive queue was empty and the remaining publisher queue was
+KenyaStar (about 9,166 URLs), with a verified 20-second robots interval. Restoring
+slots addresses the erroneous fallback; it cannot remove that publisher's
+fleet-wide pacing or promise linear throughput on a single-host tail.

@@ -53,9 +53,9 @@ class RecoveryTests(unittest.TestCase):
   with patch.dict('os.environ',{'CLOUD_RUN_TASK_ATTEMPT':'0'}):
    r=Recovery(b,'run/','execution',None,clock=lambda:150)
   self.assertEqual(r.attempt_elapsed,50);self.assertEqual(r.state['memory_restarts'],1)
- def test_cloud_retry_reduces_concurrency(self):
+ def test_cloud_retry_without_memory_pressure_preserves_concurrency(self):
   r=Recovery(Bucket(),'run/','execution',100)
-  with patch.dict('os.environ',{'CLOUD_RUN_TASK_ATTEMPT':'1'}):self.assertTrue(r.reduced_concurrency)
+  with patch.dict('os.environ',{'CLOUD_RUN_TASK_ATTEMPT':'1'}):self.assertFalse(r.reduced_concurrency)
  def test_only_later_attempt_of_same_task_can_reclaim_lease(self):
   p={'execution':'execution','task_index':'0','task_attempt':0}
   self.assertTrue(retry_owns_lease(p,'execution','0',1))

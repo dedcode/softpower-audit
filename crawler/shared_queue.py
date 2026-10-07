@@ -137,7 +137,8 @@ class SharedQueue:
         self._random = random.Random(owner)
 
     def _transaction(self, operation):
-        return firestore.transactional(operation)(self.client.transaction())
+        from transaction_retry import fresh_transaction
+        return fresh_transaction(self.client, operation)
 
     def control(self):
         snapshot = self.run_ref.get(timeout=30)

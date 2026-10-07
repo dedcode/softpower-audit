@@ -43,7 +43,9 @@ class Recovery:
     def attempt_elapsed(self):return max(0,self.clock()-self.state['attempt_started_at'])
     @property
     def reduced_concurrency(self):
-        return self.state['memory_restarts']>0 or int(os.environ.get('CLOUD_RUN_TASK_ATTEMPT','0'))>0
+        # Platform retries also follow database/network errors. An attempt
+        # number alone is not evidence of memory pressure.
+        return self.state['memory_restarts']>0
     def reserve_restart(self):
         if (self.max_runtime is not None and self.elapsed>=self.max_runtime) or self.state['memory_restarts']>=MAX_MEMORY_RESTARTS:return False
         self.state['memory_restarts']+=1;self.save();return True

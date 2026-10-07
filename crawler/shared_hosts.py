@@ -151,7 +151,6 @@ class FirestoreHostStore:
         from google.cloud import firestore
         reference = self.collection.document(hashlib.sha256(host.encode()).hexdigest())
 
-        @firestore.transactional
         def perform(transaction):
             snapshot = reference.get(transaction=transaction)
             # Read time is assigned by Firestore, avoiding machine clock skew.
@@ -161,7 +160,8 @@ class FirestoreHostStore:
                 transaction.set(reference, value)
             return result
 
-        return perform(self.client.transaction(max_attempts=8))
+        from transaction_retry import fresh_transaction
+        return fresh_transaction(self.client, perform)
 
     def acquire(self, host, owner, delay, ttl, max_concurrency=1, robots_delay=None):
         return self._transaction(host, lambda state, now:
