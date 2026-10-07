@@ -26,6 +26,7 @@ def arguments(argv=None):
     parser.add_argument('--heavy-slots', type=int, default=1)
     parser.add_argument('--browser-slots', type=int, default=1)
     parser.add_argument('--instances', type=int, default=1, help='Cloud Run tasks sharing one crawl queue; each uses the run configuration workers count')
+    parser.add_argument('--shared-queue', action='store_true', help='Keep the durable shared queue when running a single instance')
     parser.add_argument('--host-concurrency', type=int, default=4, help='Fleet-wide simultaneous HTTP downloads per hostname')
     parser.add_argument('--archive-concurrency', type=int, default=4, help='Fleet-wide simultaneous downloads per archive hostname')
     parser.add_argument('--archive-slots', type=int, default=2, help='Maximum archive article slots per task, borrowing idle publisher capacity')
@@ -60,9 +61,9 @@ def job_deploy_arguments(args, image):
         'CRAWL_ARCHIVE_SLOTS': args.archive_slots,
         'CRAWL_REQUEST_SPACING': args.request_spacing,
         'CRAWL_ROTATE_SECONDS': 518400,
-        'CRAWL_DISTRIBUTED': int(args.instances > 1),
+        'CRAWL_DISTRIBUTED': int(args.instances > 1 or args.shared_queue),
     }
-    if args.instances > 1:
+    if args.instances > 1 or args.shared_queue:
         env['CRAWL_FIRESTORE_DATABASE'] = args.firestore_database
     return [
         'run', 'jobs', 'deploy', 'softpower-crawler', '--image=' + image,

@@ -47,6 +47,15 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('CRAWL_DISTRIBUTED=0', next(argument for argument in command if argument.startswith('--set-env-vars=')))
         self.assertNotIn('CRAWL_FIRESTORE_DATABASE=', next(argument for argument in command if argument.startswith('--set-env-vars=')))
 
+    def test_single_instance_can_continue_existing_shared_queue(self):
+        args = deploy_crawler.arguments(['--run-id', 'existing', '--instances', '1', '--shared-queue'])
+        command = deploy_crawler.job_deploy_arguments(args, 'existing:image')
+        env = next(x for x in command if x.startswith('--set-env-vars='))
+        self.assertIn('--tasks=1', command)
+        self.assertIn('--parallelism=1', command)
+        self.assertIn('CRAWL_DISTRIBUTED=1', env)
+        self.assertIn('CRAWL_FIRESTORE_DATABASE=softpower-crawl', env)
+
     def test_invalid_instances_and_database_are_rejected(self):
         for extra in (['--instances', '0'], ['--instances', '-1'], ['--firestore-database', 'unsafe,CRAWL_CPU=99'],
                       ['--host-concurrency','0'],['--host-concurrency','17'],['--request-spacing','-1'],

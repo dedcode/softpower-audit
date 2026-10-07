@@ -910,3 +910,13 @@ and saved two full texts; original/text objects were checked. KenyaStar's
 20-second interval was unchanged. The run reached 76,837 finished URLs and
 59,347 saved texts. This verifies recovery, not a throughput improvement claim
 for the single-publisher tail. Evidence is `phased-r14/verification.json`.
+
+### Single-instance tail (2026-10-08)
+
+The user requested one instance for the remaining KenyaStar queue. Cloud Run
+keeps the verified r14 image, 48 article slots, 4 CPUs / 4 GiB, robots pacing,
+archive recovery, memory safeguards and automatic continuation. Only task count
+and parallelism change from ten to one. The durable shared queue is retained;
+this is not a switch to the legacy single-worker manifest crawler. Future
+redeployment of this mode uses `--instances 1 --shared-queue`. Deployment tests
+cover both the legacy default and this one-instance shared-queue configuration.
