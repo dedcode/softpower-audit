@@ -859,3 +859,17 @@ The production trial uses eight archive article slots per task and eight
 simultaneous downloads per archive hostname, with the existing ten instances.
 These are capacity limits, not a guarantee of throughput. Compare saved full
 texts and errors over time; adding waiting article jobs alone is not success.
+
+Build `f061df6f-6760-4133-bc31-f1bf3849a5cb` matched the tested crawler sources.
+The fenced handover retained 61,733 completed URLs and 49,543 saved texts;
+execution `softpower-crawler-nbwlt` resumed the same queue. All 350 crawler
+regressions, including Chrome fixtures, and the additional deployment checks
+passed. Production proof is under `distributed/phased-r12/verification.json`.
+
+At 01:09:07–01:14:16 UTC, all ten tasks stayed on their first attempt, assignments
+were unique, and saved originals/text objects were verified. The 309-second
+window saved 81 full texts (944/hour) and finished 138 URLs (1,608/hour).
+Wayback reached six overlapping permits, exceeding the old four-permit limit;
+no observed host exceeded its configured bound. The short pre-handover sample
+was 197 saved texts/hour. This is initial evidence, not a sustained or matched
+workload speedup claim. Connection errors and shared archive pacing remain.
