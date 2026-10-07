@@ -894,3 +894,19 @@ At diagnosis the archive queue was empty and the remaining publisher queue was
 KenyaStar (about 9,166 URLs), with a verified 20-second robots interval. Restoring
 slots addresses the erroneous fallback; it cannot remove that publisher's
 fleet-wide pacing or promise linear throughput on a single-host tail.
+
+Live verification rejected the first r13 rollout: the Dockerfile's explicit
+module list omitted `transaction_retry.py`, causing startup failure before new
+article requests. No completed results changed. The r14 Dockerfile copies all
+crawler Python modules and imports the worker/queue/host/retry modules during
+image build. Build `4b8ab195-db97-454c-abf7-90fbf0bc3ebc` passed that smoke check
+and matched the tested sources. The failed execution was retired with an atomic
+handover; r14 resumed 76,834 completed URLs and 59,345 saved texts under
+`softpower-crawler-22wh2`. Proofs use `distributed/phased-r14/`.
+
+Production verification at 17:26:37–17:30:14 UTC kept all ten tasks on attempt
+zero with 48 slots each and unique assignments. It finished three more URLs
+and saved two full texts; original/text objects were checked. KenyaStar's
+20-second interval was unchanged. The run reached 76,837 finished URLs and
+59,347 saved texts. This verifies recovery, not a throughput improvement claim
+for the single-publisher tail. Evidence is `phased-r14/verification.json`.
