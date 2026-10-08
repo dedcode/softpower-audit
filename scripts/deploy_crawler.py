@@ -1,5 +1,6 @@
 """Deploy the approved Cloud Run Job. Execution requires a separate --execute flag."""
 import argparse
+import base64
 import json
 import math
 import re
@@ -32,6 +33,7 @@ def arguments(argv=None):
     parser.add_argument('--archive-slots', type=int, default=2, help='Maximum archive article slots per task, borrowing idle publisher capacity')
     parser.add_argument('--request-spacing', type=float, default=1., help='Minimum seconds between request starts; stricter robots rules take precedence')
     parser.add_argument('--firestore-database', default='softpower-crawl')
+    parser.add_argument('--adaptive-policy', type=Path, help='Explicit host-to-policy JSON file for a bounded adaptive-rate pilot')
     args = parser.parse_args(argv)
     if min(args.cpu, args.memory_gib, args.heavy_slots, args.browser_slots, args.instances) < 1:
         parser.error('Resource and concurrency values must be positive')
@@ -45,6 +47,20 @@ def arguments(argv=None):
         parser.error('Request spacing must be nonnegative and finite')
     if not re.fullmatch(r'[a-z][a-z0-9-]{2,61}[a-z0-9]', args.firestore_database):
         parser.error('Use a named Firestore database ID of 4–63 lowercase letters, numbers, or hyphens')
+    args.adaptive_policy_b64 = None
+    if args.adaptive_policy:
+        if not (args.instances > 1 or args.shared_queue):
+            parser.error('Adaptive pacing requires --shared-queue or multiple instances')
+        try:
+            sys_path = str(ROOT / 'crawler')
+            import sys
+            if sys_path not in sys.path:sys.path.insert(0, sys_path)
+            from adaptive_rate import decode_policies
+            value = base64.b64encode(args.adaptive_policy.read_bytes()).decode()
+            decode_policies(value)
+            args.adaptive_policy_b64 = value
+        except (OSError, ValueError, TypeError) as exc:
+            parser.error(str(exc))
     return args
 
 
@@ -65,6 +81,8 @@ def job_deploy_arguments(args, image):
     }
     if args.instances > 1 or args.shared_queue:
         env['CRAWL_FIRESTORE_DATABASE'] = args.firestore_database
+    if args.adaptive_policy_b64:
+        env['CRAWL_ADAPTIVE_HOSTS_B64'] = args.adaptive_policy_b64
     return [
         'run', 'jobs', 'deploy', 'softpower-crawler', '--image=' + image,
         '--region=' + REGION,

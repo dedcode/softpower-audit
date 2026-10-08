@@ -4,6 +4,8 @@ import io
 from pathlib import Path
 import sys
 import unittest
+import tempfile
+import json
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
@@ -18,6 +20,18 @@ def response(data, status=200):
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_adaptive_policy_is_encoded_and_requires_shared_queue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'policy.json'
+            path.write_text(json.dumps({'www.kenyastar.com': {'pilot_id': 'pilot'}}))
+            args = deploy_crawler.arguments(['--run-id', 'existing', '--shared-queue', '--adaptive-policy', str(path)])
+            env = next(x for x in deploy_crawler.job_deploy_arguments(args, 'image') if x.startswith('--set-env-vars='))
+            self.assertIn('CRAWL_ADAPTIVE_HOSTS_B64=', env)
+            from adaptive_rate import decode_policies
+            self.assertEqual(decode_policies(args.adaptive_policy_b64)['www.kenyastar.com'].requests, 100)
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                deploy_crawler.arguments(['--run-id', 'existing', '--adaptive-policy', str(path)])
+
     def test_multiple_instances_share_one_database_and_keep_per_instance_resources(self):
         args = deploy_crawler.arguments(['--run-id', 'test-image', '--instances', '4', '--cpu', '4', '--memory-gib', '4', '--heavy-slots', '3'])
         command = deploy_crawler.job_deploy_arguments(args, 'test:image')

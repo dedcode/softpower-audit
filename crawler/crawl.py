@@ -46,11 +46,15 @@ class Fetcher:
         if self.host_coordinator is None and os.environ.get('CRAWL_FIRESTORE_DATABASE'):
             from google.cloud import firestore
             from shared_hosts import FirestoreHostStore,SharedHostCoordinator
+            from adaptive_rate import decode_policies
             client=firestore.Client(project=bucket.client.project,database=os.environ['CRAWL_FIRESTORE_DATABASE'])
             self.host_coordinator=SharedHostCoordinator(FirestoreHostStore(client),
                 max_concurrency=int(os.environ.get('CRAWL_HOST_CONCURRENCY','4')),poll_seconds=1,
                 host_limits={host:int(os.environ.get('CRAWL_ARCHIVE_CONCURRENCY',os.environ.get('CRAWL_HOST_CONCURRENCY','4')))
-                             for host in ('archive.org','web.archive.org')})
+                             for host in ('archive.org','web.archive.org')},
+                adaptive_hosts=decode_policies(os.environ.get('CRAWL_ADAPTIVE_HOSTS_B64','')))
+        elif self.host_coordinator is None and os.environ.get('CRAWL_ADAPTIVE_HOSTS_B64'):
+            raise ValueError('Adaptive crawling requires the shared host coordinator')
     def network_snapshot(self):
         with self.lock:return dict(self.network)
     def dispatch_availability(self,hosts):
@@ -180,13 +184,14 @@ class Fetcher:
         p=public_url(url)
         with self.host_slot(p.hostname,delay):
             self.check_running()
-            started=time.monotonic();completed=False
+            started=time.monotonic();completed=False;status=None
             with self.lock:
                 self.network['http_started']+=1;self.network['http_in_flight']+=1
             try:
                 with requests.Session() as s:
                     s.trust_env=False
                     with s.get(url,headers={'User-Agent':UA,'Accept':'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'},timeout=(10,25),allow_redirects=False,stream=True) as r:
+                        status=r.status_code
                         if r.status_code in (429,503):self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
                         data=bytearray();oversize=False;began=time.monotonic()
                         for chunk in r.iter_content(65536):
@@ -195,10 +200,14 @@ class Fetcher:
                         completed=True
                         return r.status_code,requests.structures.CaseInsensitiveDict(r.headers),bytes(data[:MAX_BODY]),oversize
             finally:
+                duration=max(0.,time.monotonic()-started)
                 with self.lock:
                     self.network['http_in_flight']-=1
                     self.network['http_completed' if completed else 'http_errors']+=1
-                    self.network['http_seconds']+=max(0.,time.monotonic()-started)
+                    self.network['http_seconds']+=duration
+                lease=getattr(self.shared_leases,'active',{}).get(p.hostname)
+                observe=getattr(lease,'observe',None)
+                if callable(observe):observe(status,duration,transport_error=not completed)
     def policy(self,url):
         p=public_url(url);origin=p.scheme+'://'+p.netloc
         with self.queued_host_lock('robots:'+origin):

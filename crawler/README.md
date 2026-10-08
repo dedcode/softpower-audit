@@ -928,3 +928,38 @@ verification. The previous ten-task execution and its controller are retired.
 Launch, reservation and verification evidence is under
 `distributed/single-instance-20261008/`. CPU and memory allocation are reduced
 90%; storage costs and publisher pacing are unchanged.
+
+### Bounded adaptive-rate pilot (2026-10-08)
+
+The user authorized replacing KenyaStar's fixed crawl-delay with measured,
+adaptive request pacing. This is an explicit per-host opt-in; other publishers
+and archives retain their existing robots pacing and limits. Prohibited paths,
+the crawler's own identity, server Retry-After instructions, global ownership
+fences, article recovery and stored originals are unchanged.
+
+`adaptive_rate.py` keeps each experiment's settings, request budget, response
+counts, latency and rate adjustments in the existing Firestore host document.
+Admission and scheduler readiness use the same adaptive limits across workers.
+Response feedback is fenced to the active host lease and deduplicated. Restarting
+an instance cannot reset a pilot's request count. Once its request budget is used,
+new starts automatically return to the recorded robots interval. Three consecutive
+denials or rate limits abort the fast experiment sooner.
+
+The first pilot is only `www.kenyastar.com`, 100 HTTP/document starts, initially
+five seconds apart and at most two concurrent responses. Twenty predominantly
+fast, successful responses permit a gradual rate increase; slow/error windows
+reduce it. Its minimum is three seconds, matching the existing queue refill
+cadence. Timeouts and server errors reduce the rate; 429/503 responses retain
+shared Retry-After cooldowns. A pilot may recover fewer than 100 articles because
+robots requests, redirects and retries also consume its bounded request budget.
+
+Deploy opt-in settings through `--adaptive-policy path/to/host-policies.json`
+with `--shared-queue`; the deployer validates and base64-encodes the JSON into
+`CRAWL_ADAPTIVE_HOSTS_B64`. Omitting this flag disables experiments in a full
+redeployment. For the same pilot ID, changed settings are rejected instead of
+silently restarting the experiment. Keep one task, 48 article slots and the
+existing resource allocation. All 369 regression tests, including Chrome
+fixtures, pass. Cloud build `efe0ffc6-3801-4bf8-a66f-b64cd4ed77e9` packages the
+new module and runs the container import smoke check. Run evidence is stored
+under `distributed/adaptive-r15/`; throughput must be measured before enabling
+an unbounded or wider experiment.

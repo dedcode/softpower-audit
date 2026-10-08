@@ -97,9 +97,19 @@ def _spacing(state, delay, robots_delay):
     return max(delay, known_robots), known_robots
 
 
-def admission_state(state, now, delay, max_concurrency=1, robots_delay=None):
+def _request_policy(state, delay, max_concurrency, robots_delay, adaptive_policy):
+    spacing, known_robots = _spacing(state, delay, robots_delay)
+    if adaptive_policy is not None:
+        from adaptive_rate import limits
+        state, spacing, max_concurrency = limits(state, adaptive_policy, spacing,
+                                                 known_robots, max_concurrency)
+    return state, spacing, known_robots, max_concurrency
+
+
+def admission_state(state, now, delay, max_concurrency=1, robots_delay=None, adaptive_policy=None):
     """Read-only policy; eligibility is advisory until an atomic acquire."""
-    spacing, _ = _spacing(state, delay, robots_delay)
+    state, spacing, _, max_concurrency = _request_policy(state, delay, max_concurrency,
+                                                        robots_delay, adaptive_policy)
     cooldown = max(0., float(state.get('cooldown_until', 0)) - now)
     last_started = state.get('last_started_at')
     permitted = (float(last_started) + spacing if last_started is not None
@@ -120,15 +130,17 @@ def admission_state(state, now, delay, max_concurrency=1, robots_delay=None):
     return Admission(wait == 0, wait, cooldown)
 
 
-def acquire_state(state, now, owner, host, delay, ttl, max_concurrency=1, robots_delay=None):
+def acquire_state(state, now, owner, host, delay, ttl, max_concurrency=1, robots_delay=None,
+                  adaptive_policy=None):
     """Pure transaction policy, shared by the Firestore adapter and tests."""
     state = dict(state)
     max_concurrency = _capacity(max_concurrency)
-    spacing, known_robots = _spacing(state, delay, robots_delay)
-    result = admission_state(state, now, delay, max_concurrency, robots_delay)
+    state, spacing, known_robots, capacity = _request_policy(state, delay, max_concurrency,
+                                                            robots_delay, adaptive_policy)
+    result = admission_state(state, now, delay, max_concurrency, robots_delay, adaptive_policy)
     policy = {'host': host, 'delay_seconds': spacing,
               'robots_delay_seconds': known_robots, 'default_delay_seconds': delay,
-              'max_concurrency': max_concurrency}
+              'max_concurrency': capacity}
     wait = result.wait_seconds
     if wait > 0:
         # Share newly learned robots policy even if the host is already full.
@@ -138,7 +150,11 @@ def acquire_state(state, now, owner, host, delay, ttl, max_concurrency=1, robots
     leases = _active_leases(state, now) if 'leases' in state else {}
     leases[owner] = now + ttl
     state.update(policy, last_started_at=now, next_allowed_at=now + spacing)
-    return Admission(True), _lease_state(state, leases, now)
+    state = _lease_state(state, leases, now)
+    if adaptive_policy is not None:
+        from adaptive_rate import admitted
+        admitted(state, owner, now, adaptive_policy)
+    return Admission(True), state
 
 
 class FirestoreHostStore:
@@ -163,12 +179,12 @@ class FirestoreHostStore:
         from transaction_retry import fresh_transaction
         return fresh_transaction(self.client, perform)
 
-    def acquire(self, host, owner, delay, ttl, max_concurrency=1, robots_delay=None):
+    def acquire(self, host, owner, delay, ttl, max_concurrency=1, robots_delay=None, adaptive_policy=None):
         return self._transaction(host, lambda state, now:
                                  acquire_state(state, now, owner, host, delay, ttl,
-                                               max_concurrency, robots_delay))
+                                               max_concurrency, robots_delay, adaptive_policy))
 
-    def availability(self, hosts, delay, max_concurrency=1, robots_delays=None):
+    def availability(self, hosts, delay, max_concurrency=1, robots_delays=None, adaptive_policies=None):
         """Batch advisory reads, using server times just like atomic acquire."""
         robots_delays = robots_delays or {}
         references = {hashlib.sha256(host.encode()).hexdigest(): host for host in hosts}
@@ -179,7 +195,7 @@ class FirestoreHostStore:
             for snapshot in self.client.get_all(batch):
                 host = references[snapshot.id]
                 result[host] = admission_state(snapshot.to_dict() or {}, snapshot.read_time.timestamp(),
-                    delay, max_concurrency, robots_delays.get(host))
+                    delay, max_concurrency, robots_delays.get(host), (adaptive_policies or {}).get(host))
         # Missing snapshots are not permission to make an uncoordinated start.
         for host in hosts:
             result.setdefault(host, Admission(False, 1.))
@@ -228,6 +244,15 @@ class FirestoreHostStore:
             return True, {**state, 'host': host,
                           'cooldown_until': max(float(state.get('cooldown_until', 0)), now + seconds),
                           'updated_at': now}
+        return self._transaction(host, operation)
+
+    def observe(self, host, owner, policy, status, seconds, transport_error=False):
+        from adaptive_rate import feedback
+        def operation(state, now):
+            if owner not in _active_leases(state, now):
+                return False, None
+            value, changed = feedback(state, now, owner, policy, status, seconds, transport_error)
+            return True, value if changed else None
         return self._transaction(host, operation)
 
 
@@ -283,6 +308,16 @@ class HostLease:
             self.failure = HostLeaseLost(f'Host lease ownership changed for {self.host}')
             raise self.failure
 
+    def observe(self, status, seconds, transport_error=False):
+        policy = self.coordinator.adaptive_hosts.get(self.host)
+        if policy is None:
+            return
+        self.check()
+        if not self.coordinator.store.observe(self.host, self.owner, policy, status,
+                                              _seconds(seconds, 'response_seconds'), transport_error):
+            self.failure = HostLeaseLost(f'Host lease ownership changed for {self.host}')
+            raise self.failure
+
     def release(self):
         if self.closed:
             return
@@ -307,7 +342,8 @@ class HostLease:
 
 class SharedHostCoordinator:
     def __init__(self, store, lease_seconds=180, poll_seconds=5,
-                 clock=time.monotonic, sleep=time.sleep, max_concurrency=1, host_limits=None):
+                 clock=time.monotonic, sleep=time.sleep, max_concurrency=1, host_limits=None,
+                 adaptive_hosts=None):
         self.store = store
         self.lease_seconds = _seconds(lease_seconds, 'lease_seconds', positive=True)
         self.poll_seconds = _seconds(poll_seconds, 'poll_seconds', positive=True)
@@ -315,6 +351,7 @@ class SharedHostCoordinator:
         self.max_concurrency = _capacity(max_concurrency)
         self.host_limits = {normalize_host(host): _capacity(limit)
                             for host, limit in (host_limits or {}).items()}
+        self.adaptive_hosts = {normalize_host(host): policy for host, policy in (adaptive_hosts or {}).items()}
 
     def try_acquire(self, host, delay=3, cancelled=None, guard=None, robots_delay=None):
         """Try once without sleeping; return (lease or None, admission)."""
@@ -332,7 +369,11 @@ class SharedHostCoordinator:
         # Preserve the original adapter contract for callers using the legacy
         # single-permit policy (including in-memory stores and existing tests).
         capacity = self.host_limits.get(host, self.max_concurrency)
-        if capacity == 1 and robots_delay is None:
+        adaptive = self.adaptive_hosts.get(host)
+        if adaptive is not None:
+            result = self.store.acquire(host, owner, delay, self.lease_seconds,
+                                        capacity, robots_delay, adaptive)
+        elif capacity == 1 and robots_delay is None:
             result = self.store.acquire(host, owner, delay, self.lease_seconds)
         else:
             result = self.store.acquire(host, owner, delay, self.lease_seconds,
@@ -365,7 +406,10 @@ class SharedHostCoordinator:
         result = {}
         for capacity in {self.host_limits.get(host, self.max_concurrency) for host in hosts}:
             group = [host for host in hosts if self.host_limits.get(host, self.max_concurrency) == capacity]
-            result.update(self.store.availability(group, delay, capacity, robots_delays))
+            if any(host in self.adaptive_hosts for host in group):
+                result.update(self.store.availability(group, delay, capacity, robots_delays, self.adaptive_hosts))
+            else:
+                result.update(self.store.availability(group, delay, capacity, robots_delays))
         return result
 
     def defer(self, host, seconds):

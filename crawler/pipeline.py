@@ -181,13 +181,13 @@ class Pipeline(Fetcher):
    with self.lock:self.live.pop(aid,None)
  def render(self,url):
   request_guard=self.request_guard()
-  document_lease=None;document_lock=threading.RLock()
+  document_lease=None;document_lock=threading.RLock();document_started=0.;document_reported=False
   def release_document():
    nonlocal document_lease
    lease,document_lease=document_lease,None
    if lease is not None:lease.release()
   def authorize(request_url,document):
-   nonlocal document_lease
+   nonlocal document_lease,document_started,document_reported
    with document_lock,self.guarded_requests(request_guard):
     request_guard()
     parsed=public_url(request_url)
@@ -207,12 +207,16 @@ class Pipeline(Fetcher):
        document_lease=self.host_coordinator.acquire(parsed.hostname,max(self.delay,delay or 0),
         cancelled=self.abort_event.is_set,guard=request_guard,robots_delay=robots_delay)
       document_lease.start_renewal()
+      document_started=time.monotonic();document_reported=False
     if document_lease is not None:document_lease.check()
     return True
   def response(request_url,status,retry_after):
-   with self.guarded_requests(request_guard):
+   nonlocal document_reported
+   with document_lock,self.guarded_requests(request_guard):
     request_guard()
     self.observe_response(request_url,status,retry_after)
+    if document_lease is not None and not document_reported and public_url(request_url).hostname==document_lease.host:
+     document_lease.observe(status,max(0.,time.monotonic()-document_started));document_reported=True
   try:
    result=render_isolated(url,authorize,queue_wait=self.host_queue_observer(),response=response)
    with document_lock:
