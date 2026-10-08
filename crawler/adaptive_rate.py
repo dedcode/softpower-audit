@@ -107,13 +107,16 @@ def feedback(state, now, owner, policy, status, seconds, transport_error=False):
     adaptive['transport_errors'] += int(transport_error)
     slow = seconds > policy.healthy_seconds
     adaptive['slow_responses'] += int(slow)
-    blocked = status in (401, 403, 429)
+    denied = status in (401, 403)
+    blocked = denied or status == 429
     overload = status in (429, 503)
     error = transport_error or (status is not None and status >= 500)
-    healthy = status == 200 and not slow and not transport_error
+    # A fast 404/410 demonstrates serving capacity, although it contributes no
+    # article text. Keep HTTP outcomes separate from extraction success counts.
+    healthy = status in (200, 404, 410) and not slow and not transport_error
     adaptive['consecutive_errors'] = adaptive['consecutive_errors'] + 1 if error else 0
     adaptive['consecutive_blocks'] = adaptive['consecutive_blocks'] + 1 if blocked else 0
-    adaptive['window_results'].append('healthy' if healthy else 'error' if error or blocked else 'slow' if slow else 'neutral')
+    adaptive['window_results'].append('healthy' if healthy else 'error' if error or status == 429 else 'slow' if slow else 'neutral')
 
     def change(delay, capacity, reason):
         old = adaptive['delay_seconds']
@@ -127,14 +130,17 @@ def feedback(state, now, owner, policy, status, seconds, transport_error=False):
 
     # A block never triggers identity/IP changes. Stop the fast experiment after
     # repeated explicit denial; rate-limiting also pauses all peers immediately.
-    if blocked:
+    # One URL-specific 403 is not evidence that the entire host is overloaded.
+    # The article still retains its denied outcome and is not retried as a bypass.
+    repeated_denial = denied and adaptive['consecutive_blocks'] >= 2
+    if status == 429 or repeated_denial:
         state['cooldown_until'] = max(float(state.get('cooldown_until', 0)), now + 60)
     if adaptive['consecutive_blocks'] >= 3:
         adaptive['phase'] = 'aborted'
         adaptive['ended_at'] = now
         adaptive['reason'] = 'Repeated access denial or rate limiting'
     elif adaptive['phase'] == 'sampling':
-        if overload or blocked or adaptive['consecutive_errors'] >= 3:
+        if overload or repeated_denial or adaptive['consecutive_errors'] >= 3:
             change(max(10., adaptive['delay_seconds'] * 2), 1, 'server_error_or_block')
             adaptive['consecutive_errors'] = 0
         elif len(adaptive['window_results']) >= policy.window:

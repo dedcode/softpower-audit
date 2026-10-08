@@ -963,3 +963,19 @@ fixtures, pass. Cloud build `efe0ffc6-3801-4bf8-a66f-b64cd4ed77e9` packages the
 new module and runs the container import smoke check. Run evidence is stored
 under `distributed/adaptive-r15/`; throughput must be measured before enabling
 an unbounded or wider experiment.
+
+The first 16-request experiment produced no transport errors, but its initial
+controller overreacted to isolated 403s. The preceding half-hour already had
+10 publisher 403s, 28 missing responses and 15 transport failures across 35
+finished articles, so a single denied historical URL did not establish overload.
+That experiment was deliberately ended and its normal pacing restored; eight
+new texts and their original objects were verified (this includes archive
+recovery, not eight successful publisher responses).
+
+The refined r16 controller keeps isolated 401/403 responses local to the article.
+Two consecutive denials slow and pause the host; three abort the experiment.
+429, 503, timeouts and other overload signals still reduce the host rate. Fast
+404/410 responses inform serving capacity but remain recorded as missing pages,
+never as extracted texts. All 370 tests pass. The refined pilot has a fresh,
+100-request ID with the same one-worker allocation; evidence uses
+`distributed/adaptive-r16/`.

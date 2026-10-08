@@ -80,10 +80,22 @@ class AdaptiveRateTests(unittest.TestCase):
         self.assertEqual(state['adaptive']['delay_seconds'], 10)
         self.assertEqual(state['adaptive']['slow_responses'], 5)
 
-    def test_404s_are_recorded_and_never_treated_as_healthy(self):
+    def test_fast_404s_allow_capacity_learning_and_remain_missing_outcomes(self):
         for _ in range(5):state = self.sample(404)
-        self.assertEqual(state['adaptive']['delay_seconds'], 5)
+        self.assertEqual(state['adaptive']['delay_seconds'], 3.5)
         self.assertEqual(state['adaptive']['transport_errors'], 0)
+        self.assertEqual(state['adaptive']['status_counts'], {'404': 5})
+
+    def test_isolated_denial_does_not_pause_unrelated_articles(self):
+        state = self.sample(403)
+        self.assertEqual(state['adaptive']['delay_seconds'], 5)
+        self.assertNotIn('cooldown_until', state)
+        self.sample(200)
+        state = self.sample(403)
+        self.assertEqual(state['adaptive']['delay_seconds'], 5)
+        state = self.sample(403)
+        self.assertEqual(state['adaptive']['delay_seconds'], 10)
+        self.assertGreater(state['cooldown_until'], self.clock.now())
 
     def test_request_cap_returns_to_baseline_even_after_worker_restart(self):
         policy = AdaptivePolicy('tiny-pilot', requests=2)
