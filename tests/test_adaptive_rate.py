@@ -86,7 +86,7 @@ class AdaptiveRateTests(unittest.TestCase):
         self.assertEqual(state['adaptive']['transport_errors'], 0)
         self.assertEqual(state['adaptive']['status_counts'], {'404': 5})
 
-    def test_isolated_denial_does_not_pause_unrelated_articles(self):
+    def test_denials_do_not_impute_host_overload(self):
         state = self.sample(403)
         self.assertEqual(state['adaptive']['delay_seconds'], 5)
         self.assertNotIn('cooldown_until', state)
@@ -94,8 +94,8 @@ class AdaptiveRateTests(unittest.TestCase):
         state = self.sample(403)
         self.assertEqual(state['adaptive']['delay_seconds'], 5)
         state = self.sample(403)
-        self.assertEqual(state['adaptive']['delay_seconds'], 10)
-        self.assertGreater(state['cooldown_until'], self.clock.now())
+        self.assertEqual(state['adaptive']['delay_seconds'], 5)
+        self.assertNotIn('cooldown_until', state)
 
     def test_request_cap_returns_to_baseline_even_after_worker_restart(self):
         policy = AdaptivePolicy('tiny-pilot', requests=2)
@@ -109,12 +109,36 @@ class AdaptiveRateTests(unittest.TestCase):
         self.assertEqual(self.document()['adaptive']['started'], 2)
         self.assertEqual(self.document()['adaptive']['completed'], 2)
 
-    def test_repeated_denial_aborts_experiment(self):
-        for _ in range(3):state = self.sample(403)
+    def test_repeated_rate_limiting_aborts_experiment(self):
+        for _ in range(3):state = self.sample(429)
         self.assertEqual(state['adaptive']['phase'], 'aborted')
         lease = self.coordinator.acquire('example.org', delay=1, robots_delay=20)
         self.assertEqual(self.document()['delay_seconds'], 20)
         lease.release()
+
+    def test_continuous_mode_keeps_learning_after_one_hundred_requests(self):
+        policy = AdaptivePolicy('continuous', requests=None, window=5)
+        self.coordinator.adaptive_hosts['example.org'] = policy
+        for _ in range(110):state = self.sample()
+        self.assertEqual(state['adaptive']['phase'], 'continuous')
+        self.assertEqual(state['adaptive']['started'], 110)
+        self.assertEqual(state['adaptive']['completed'], 110)
+        self.assertEqual(state['adaptive']['delay_seconds'], 1)
+        self.assertEqual(state['robots_delay_seconds'], 20)
+        self.assertEqual(state['adaptive']['sample_owners'], {})
+        self.assertLessEqual(len(state['adaptive']['adjustments']), 30)
+
+    def test_continuous_mode_pauses_rate_limits_without_resetting_its_statistics(self):
+        self.coordinator.adaptive_hosts['example.org'] = AdaptivePolicy('continuous', requests=None)
+        for _ in range(3):state = self.sample(429)
+        self.assertEqual(state['adaptive']['phase'], 'continuous')
+        self.assertEqual(state['adaptive']['delay_seconds'], 40)
+        self.assertEqual(state['adaptive']['status_counts'], {'429': 3})
+
+    def test_neutral_denials_do_not_prevent_learning_from_healthy_responses(self):
+        for code in [200, 403, 404, 403, 200]:state = self.sample(code)
+        self.assertEqual(state['adaptive']['delay_seconds'], 3.5)
+        self.assertEqual(state['adaptive']['status_counts']['403'], 2)
 
     def test_duplicate_response_and_stale_owners_cannot_change_statistics(self):
         lease = self.coordinator.acquire('example.org', delay=1, robots_delay=20)
@@ -137,6 +161,18 @@ class AdaptiveRateTests(unittest.TestCase):
             with self.assertRaises(requests.ReadTimeout):fetcher.one('https://example.org/story')
         self.assertEqual(self.document()['adaptive']['transport_errors'], 1)
         self.assertEqual(self.document()['leases'], {})
+
+    def test_denial_with_explicit_retry_after_still_pauses_host(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        fetcher = Fetcher(Bucket(), 'pilot', delay=1, host_coordinator=self.coordinator)
+        response = SimpleNamespace(status_code=403, headers={'Retry-After': '600'},
+                                   iter_content=lambda _: [b'denied'])
+        with patch('crawl.public_url', side_effect=urlsplit), patch('crawl.requests.Session') as session:
+            session.return_value.__enter__.return_value.get.return_value = nullcontext(response)
+            fetcher.one('https://example.org/story')
+        self.assertEqual(self.document()['cooldown_until'], 700)
+        self.assertEqual(self.document()['adaptive']['delay_seconds'], 5)
 
 
 class PolicyValidationTests(unittest.TestCase):

@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 @dataclass(frozen=True)
 class AdaptivePolicy:
     pilot_id: str
-    requests: int = 100
+    requests: int | None = 100
     initial_delay: float = 5.
     min_delay: float = 1.
     max_delay: float = 120.
@@ -22,6 +22,8 @@ class AdaptivePolicy:
             raise ValueError('Adaptive policy needs a pilot ID of 1–100 characters')
         for name, low, high in [('requests', 1, 1000), ('max_concurrency', 1, 4), ('window', 5, 100)]:
             value = getattr(self, name)
+            if name == 'requests' and value is None:
+                continue
             if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
                 raise ValueError('Invalid adaptive ' + name)
         for name in ('initial_delay', 'min_delay', 'max_delay', 'healthy_seconds'):
@@ -57,7 +59,8 @@ def prepared(state, policy):
             raise ValueError('An existing adaptive pilot ID cannot change its settings')
         return state
     state['adaptive'] = {
-        'pilot_id': policy.pilot_id, 'settings': settings, 'phase': 'sampling',
+        'pilot_id': policy.pilot_id, 'settings': settings,
+        'phase': 'continuous' if policy.requests is None else 'sampling',
         'started': 0, 'completed': 0, 'expired_samples': 0, 'delay_seconds': policy.initial_delay,
         'max_concurrency': policy.max_concurrency, 'window_results': [],
         'consecutive_errors': 0, 'consecutive_blocks': 0, 'status_counts': {},
@@ -70,7 +73,7 @@ def prepared(state, policy):
 def limits(state, policy, default_delay, robots_delay, default_capacity):
     state = prepared(state, policy)
     adaptive = state['adaptive']
-    if adaptive['phase'] != 'sampling' or adaptive['started'] >= policy.requests:
+    if adaptive['phase'] not in ('sampling', 'continuous') or (policy.requests is not None and adaptive['started'] >= policy.requests):
         return state, default_delay, default_capacity
     # Only explicitly opted-in hosts treat crawl-delay as advisory during the
     # bounded experiment. The recorded rule is retained for automatic fallback.
@@ -79,7 +82,7 @@ def limits(state, policy, default_delay, robots_delay, default_capacity):
 
 def admitted(state, owner, now, policy):
     adaptive = state['adaptive']
-    if adaptive['phase'] != 'sampling' or adaptive['started'] >= policy.requests:
+    if adaptive['phase'] not in ('sampling', 'continuous') or (policy.requests is not None and adaptive['started'] >= policy.requests):
         return
     retained = {key: value for key, value in adaptive['sample_owners'].items()
                 if float(state.get('leases', {}).get(key, 0)) > now}
@@ -88,7 +91,7 @@ def admitted(state, owner, now, policy):
     adaptive['sample_owners'][owner] = True
     adaptive['started'] += 1
     adaptive.setdefault('started_at', now)
-    if adaptive['started'] >= policy.requests:
+    if policy.requests is not None and adaptive['started'] >= policy.requests:
         adaptive['phase'] = 'draining'
         adaptive['ended_at'] = now
 
@@ -107,15 +110,13 @@ def feedback(state, now, owner, policy, status, seconds, transport_error=False):
     adaptive['transport_errors'] += int(transport_error)
     slow = seconds > policy.healthy_seconds
     adaptive['slow_responses'] += int(slow)
-    denied = status in (401, 403)
-    blocked = denied or status == 429
     overload = status in (429, 503)
     error = transport_error or (status is not None and status >= 500)
     # A fast 404/410 demonstrates serving capacity, although it contributes no
     # article text. Keep HTTP outcomes separate from extraction success counts.
     healthy = status in (200, 404, 410) and not slow and not transport_error
     adaptive['consecutive_errors'] = adaptive['consecutive_errors'] + 1 if error else 0
-    adaptive['consecutive_blocks'] = adaptive['consecutive_blocks'] + 1 if blocked else 0
+    adaptive['consecutive_blocks'] = adaptive['consecutive_blocks'] + 1 if status == 429 else 0
     adaptive['window_results'].append('healthy' if healthy else 'error' if error or status == 429 else 'slow' if slow else 'neutral')
 
     def change(delay, capacity, reason):
@@ -128,24 +129,23 @@ def feedback(state, now, owner, policy, status, seconds, transport_error=False):
         adaptive['adjustments'] = adaptive['adjustments'][-30:]
         adaptive['window_results'] = []
 
-    # A block never triggers identity/IP changes. Stop the fast experiment after
-    # repeated explicit denial; rate-limiting also pauses all peers immediately.
-    # One URL-specific 403 is not evidence that the entire host is overloaded.
-    # The article still retains its denied outcome and is not retried as a bypass.
-    repeated_denial = denied and adaptive['consecutive_blocks'] >= 2
-    if status == 429 or repeated_denial:
+    # Denied URLs retain their article-level outcome, without retries that bypass
+    # access restrictions. A 401/403 alone is not a serving-capacity signal;
+    # explicit Retry-After is handled separately by the HTTP/browser fetcher.
+    if status == 429:
         state['cooldown_until'] = max(float(state.get('cooldown_until', 0)), now + 60)
-    if adaptive['consecutive_blocks'] >= 3:
+    if adaptive['consecutive_blocks'] >= 3 and policy.requests is not None:
         adaptive['phase'] = 'aborted'
         adaptive['ended_at'] = now
-        adaptive['reason'] = 'Repeated access denial or rate limiting'
-    elif adaptive['phase'] == 'sampling':
-        if overload or repeated_denial or adaptive['consecutive_errors'] >= 3:
+        adaptive['reason'] = 'Repeated rate limiting'
+    elif adaptive['phase'] in ('sampling', 'continuous'):
+        if overload or adaptive['consecutive_errors'] >= 3:
             change(max(10., adaptive['delay_seconds'] * 2), 1, 'server_error_or_block')
             adaptive['consecutive_errors'] = 0
         elif len(adaptive['window_results']) >= policy.window:
             window = adaptive['window_results']
-            if window.count('healthy') >= math.ceil(policy.window * .95):
+            informative = len(window) - window.count('neutral')
+            if informative >= math.ceil(policy.window / 2) and window.count('healthy') >= math.ceil(informative * .95):
                 change(adaptive['delay_seconds'] * .7, policy.max_concurrency, 'healthy_window')
             elif window.count('error') >= max(2, math.ceil(policy.window * .1)) or window.count('slow') >= policy.window // 2:
                 change(max(10., adaptive['delay_seconds'] * 2), 1, 'unhealthy_window')

@@ -164,7 +164,7 @@ class Fetcher:
             lease.defer(seconds)
         with self.lock:self.cooldowns[host]=max(self.cooldowns.get(host,0),time.monotonic()+seconds)
     def observe_response(self,url,status,retry_after=None):
-        if status not in (429,503):return
+        if status not in (429,503) and not (status in (401,403) and retry_after):return
         self.check_running()
         host=public_url(url).hostname;seconds=retry_seconds(retry_after,1)
         if self.host_coordinator is not None:self.host_coordinator.defer(host,seconds)
@@ -192,7 +192,8 @@ class Fetcher:
                     s.trust_env=False
                     with s.get(url,headers={'User-Agent':UA,'Accept':'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'},timeout=(10,25),allow_redirects=False,stream=True) as r:
                         status=r.status_code
-                        if r.status_code in (429,503):self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
+                        if r.status_code in (429,503) or (r.status_code in (401,403) and r.headers.get('Retry-After')):
+                            self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
                         data=bytearray();oversize=False;began=time.monotonic()
                         for chunk in r.iter_content(65536):
                             data.extend(chunk)

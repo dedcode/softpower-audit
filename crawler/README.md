@@ -979,3 +979,27 @@ Two consecutive denials slow and pause the host; three abort the experiment.
 never as extracted texts. All 370 tests pass. The refined pilot has a fresh,
 100-request ID with the same one-worker allocation; evidence uses
 `distributed/adaptive-r16/`.
+
+The r16 trial was ended after 80 requests: 11 returned pages, 51 were missing,
+18 were denied and none had transport failures. Its denied historical URLs
+included old `/index.php/sid/` paths, while other routes still responded normally.
+Treating repeated denials as host overload made that controller progressively
+slower, so these numbers do not establish a sustained speed improvement.
+
+The final r17 controller uses rate limits (429), server errors, transport errors
+and response latency as host-capacity signals. A 401/403 remains a denied article
+and follows the existing archive recovery path; it cannot accelerate the rate,
+but does not by itself slow unrelated URLs. Explicit Retry-After on a denial is
+still honored globally. Healthy windows exclude neutral denials from their
+capacity denominator, require at least ten informative responses, and never
+count a missing page as a saved article. All 374 tests, including Chrome fixtures,
+pass. A fresh 100-request r17 pilot precedes continued adaptive collection.
+
+For continued operation, an explicitly opted-in policy can set `requests: null`.
+It keeps rate feedback and the same host/ownership bounds across all remaining
+articles, without returning to fixed robots pacing after an arbitrary request
+count. History, windows and outstanding feedback remain bounded in memory and
+Firestore. It retains the existing run's attempt/byte budgets and one-instance
+resource allocation; it does not cap the corpus or add URLs. The initial
+five-second delay can fall to three seconds after healthy response windows.
+The recorded robots delay remains available for disabling the opt-in policy.
