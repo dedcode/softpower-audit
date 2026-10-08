@@ -943,11 +943,13 @@ Admission and scheduler readiness use the same adaptive limits across workers.
 Response feedback is fenced to the active host lease and deduplicated. Restarting
 an instance cannot reset a pilot's request count. Once its request budget is used,
 new starts automatically return to the recorded robots interval. Three consecutive
-denials or rate limits abort the fast experiment sooner.
+429 responses abort a bounded experiment sooner. Article denials alone do not
+change serving capacity in the final r17 controller.
 
 The first pilot is only `www.kenyastar.com`, 100 HTTP/document starts, initially
-five seconds apart and at most two concurrent responses. Twenty predominantly
-fast, successful responses permit a gradual rate increase; slow/error windows
+five seconds apart and at most two concurrent responses. A twenty-response
+window with predominantly fast serving responses permits a gradual rate
+increase; slow/error windows
 reduce it. Its minimum is three seconds, matching the existing queue refill
 cadence. Timeouts and server errors reduce the rate; 429/503 responses retain
 shared Retry-After cooldowns. A pilot may recover fewer than 100 articles because
@@ -1000,6 +1002,63 @@ It keeps rate feedback and the same host/ownership bounds across all remaining
 articles, without returning to fixed robots pacing after an arbitrary request
 count. History, windows and outstanding feedback remain bounded in memory and
 Firestore. It retains the existing run's attempt/byte budgets and one-instance
-resource allocation; it does not cap the corpus or add URLs. The initial
-five-second delay can fall to three seconds after healthy response windows.
-The recorded robots delay remains available for disabling the opt-in policy.
+resource allocation; it does not cap the corpus or add URLs. The bounded trial
+used a five-second initial delay and three-second minimum; the continued
+configuration below is more conservative. The recorded robots delay remains
+available for disabling the opt-in policy.
+
+Example of the continued one-host policy:
+
+```json
+{
+  "www.kenyastar.com": {
+    "pilot_id": "ke-20261009-r17-continuous-5s",
+    "requests": null,
+    "initial_delay": 10,
+    "min_delay": 5,
+    "max_delay": 120,
+    "max_concurrency": 1,
+    "window": 20,
+    "healthy_seconds": 5
+  }
+}
+```
+
+A new policy ID deliberately starts a new feedback history; ordinary worker
+restarts retain the existing history and rate. Deployment preserves one task
+and the durable shared queue. Existing executions must be retired with the
+atomic handover guard before applying a new policy to the running collection.
+
+The r17 trial completed 100 admitted starts in 13 minutes 42 seconds, with 99
+recorded responses and one start whose response was not observed. The recorded
+responses were 9 HTTP 200, 64 HTTP 404, 24 HTTP 403, one redirect and one HTTP 429;
+there were no recorded transport failures or server errors. Pacing changed from
+5 to 3.5 to 3 seconds, then the rate limit triggered a 60-second shared cooldown,
+a 10-second interval and capacity of one. The finite trial's fallback to the
+recorded 20-second robots interval was verified.
+
+At verification, the queue had finished 96 more URLs and saved 24 more texts,
+including archive recoveries. A stored article's prose and original response
+were checked. These counts include work completed around the trial and are not
+100 successful publisher downloads. The observed 7.3 publisher starts per minute
+is a short trial result, not a promised completion rate or proportional scaling
+claim. Evidence is under `distributed/adaptive-r17/` in the existing private run.
+
+Continued collection uses a more conservative policy: initially 10 seconds,
+a five-second minimum and one simultaneous publisher request. Archive recovery
+keeps its separate existing slots. This avoids retesting the three-second floor
+that produced the rate limit. Healthy windows can gradually reduce the delay;
+rate limits, slow responses and failures still increase it. It keeps the same
+image and single-worker CPU/memory allocation, with no finite adaptive request
+cap and no reset of the article queue.
+
+The continued execution `softpower-crawler-ft2zt` was verified after 21
+responses: no 429s, server errors, slow responses, transport failures or native
+task retries. A healthy first window reduced the interval from 10 to 7 seconds.
+At that check, eight more URLs were finished and one new text was saved; its
+original and extracted objects exist. The observed 4.6 starts per minute
+includes the conservative startup window and does not establish a sustained
+full-text recovery rate. The public status API returned current running progress
+with one active instance. Reservation, launch and verification evidence is under
+`distributed/adaptive-continuous-20261009/`. Runtime code is commit `0595072`;
+image digest is `sha256:d351988cef7dcfaf425c0294af1638a22699473378a62ebff9cb0b6367bb3d5b`.
