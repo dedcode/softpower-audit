@@ -19,19 +19,48 @@ class Pipeline(Fetcher):
  def __init__(self,*args,**kwargs):
   super().__init__(*args,**kwargs);self.live={};self.browser_lock=threading.Lock()
  def read(self,uri):return gzip.decompress(self.bucket.blob(uri.split('/'+self.bucket.name+'/',1)[1]).download_as_bytes(timeout=30))
+ def archive_first_checkpoint(self,item,run,country,*,checkpoint=None,publisher_retry_at=None):
+  """Create recovery work without claiming the publisher has been attempted."""
+  self.check_running();aid=key(item['url'])
+  if publisher_retry_at is not None:
+   publisher_retry_at=float(publisher_retry_at)
+   if not math.isfinite(publisher_retry_at):raise ValueError('Invalid publisher retry time')
+  previous=copy.deepcopy(checkpoint) if checkpoint is not None else {}
+  if previous and (previous.get('version')!=1 or previous.get('next_phase')!='publisher'):raise ValueError('Archive first requires publisher work')
+  result=previous.get('result') or {**item,'article_id':aid,'run_id':run,'country':country,'updated_at':now(),
+   'status':'deferred','attempts':[],'response_bytes':0,'stored_bytes':0,'raw_uri':None,'text_uri':None,
+   'http_status':None,'error':None,'reused':False,'extractor_version':EXTRACTOR_VERSION}
+  if (result.get('article_id'),result.get('run_id'),result.get('country'))!=(aid,run,country):raise ValueError('Checkpoint belongs to a different article or run')
+  return {'version':1,'next_phase':'archive','result':result,'best':previous.get('best'),
+   'extractor_version':previous.get('extractor_version',EXTRACTOR_VERSION),'unresolved':True,'elapsed_seconds':0.,
+   'archive_lookups':previous.get('archive_lookups',{}),'archive_seen':previous.get('archive_seen',[]),
+   'publisher_unresolved':True,'archive_first':True,'archive_first_done':False,'archive_first_complete':False,
+   'archive_unresolved':bool(previous.get('unresolved',False)),'publisher_retry_at':publisher_retry_at}
  def fetch_phase(self,item,run,country,*,phase='publisher',checkpoint=None):
   return Pipeline.fetch(self,item,run,country,_phase=phase,_checkpoint=checkpoint)
  def fetch(self,item,run,country,*,_phase=None,_checkpoint=None):
   if _phase not in (None,'publisher','browser','archive'):raise ValueError('Unknown extraction phase')
   aid=key(item['url']);began=time.monotonic();queued_at_start=queue_wait_seconds();host_queued_at_start=self.host_queue_wait_seconds();events=[];best=None;unresolved=False
   previous_elapsed=0.;checkpoint_extractor=EXTRACTOR_VERSION;archive_lookups={};archive_seen=set();prior_unresolved=False
+  publisher_unresolved=False;archive_first=False;archive_first_done=False;archive_first_complete=False;archive_unresolved=False;publisher_retry_at=None
   result={**item,'article_id':aid,'run_id':run,'country':country,'updated_at':now(),'status':'deferred','attempts':events,'response_bytes':0,'stored_bytes':0,'raw_uri':None,'text_uri':None,'http_status':None,'error':None,'reused':False,'extractor_version':EXTRACTOR_VERSION}
-  if _phase in ('browser','archive'):
+  if _phase in ('browser','archive') or (_phase=='publisher' and isinstance(_checkpoint,dict) and 'result' in _checkpoint):
    checkpoint=copy.deepcopy(_checkpoint)
    if not isinstance(checkpoint,dict) or checkpoint.get('version')!=1 or checkpoint.get('next_phase')!=_phase:raise ValueError('Recovery phase requires its matching checkpoint')
    result=checkpoint['result']
    if (result.get('article_id'),result.get('run_id'),result.get('country'))!=(aid,run,country):raise ValueError('Checkpoint belongs to a different article or run')
    events=result['attempts'];best=checkpoint['best'];unresolved=checkpoint['unresolved'];previous_elapsed=float(checkpoint['elapsed_seconds'])
+   publisher_unresolved=bool(checkpoint.get('publisher_unresolved',False));archive_first=bool(checkpoint.get('archive_first',False))
+   archive_first_done=bool(checkpoint.get('archive_first_done',False));archive_first_complete=bool(checkpoint.get('archive_first_complete',False))
+   archive_unresolved=bool(checkpoint.get('archive_unresolved',False));publisher_retry_at=checkpoint.get('publisher_retry_at')
+   if publisher_retry_at is not None:
+    publisher_retry_at=float(publisher_retry_at)
+    if not math.isfinite(publisher_retry_at):raise ValueError('Invalid publisher retry time')
+   if archive_first:unresolved=archive_unresolved
+   elif _phase=='publisher' and archive_first_done:
+    # Pending publisher work is not a failed publisher attempt. A new attempt
+    # also gets a fresh work budget while keeping the archive evidence/cache.
+    unresolved=False;publisher_unresolved=False;previous_elapsed=0.
    prior_unresolved=unresolved
    archive_lookups=copy.deepcopy(checkpoint.get('archive_lookups',{}));archive_seen=set(checkpoint.get('archive_seen',[]))
    if not isinstance(archive_lookups,dict):raise ValueError('Invalid archive lookup checkpoint')
@@ -44,6 +73,9 @@ class Pipeline(Fetcher):
   elif _checkpoint is not None:
    if _phase!='publisher' or _checkpoint.get('version')!=1 or _checkpoint.get('next_phase')!='publisher':raise ValueError('Publisher phase cannot resume an archive checkpoint')
    best=copy.deepcopy(_checkpoint.get('best'))
+   archive_first_done=bool(_checkpoint.get('archive_first_done',False));archive_first_complete=bool(_checkpoint.get('archive_first_complete',False))
+   archive_lookups=copy.deepcopy(_checkpoint.get('archive_lookups',{}));archive_seen=set(_checkpoint.get('archive_seen',[]))
+   if not isinstance(archive_lookups,dict):raise ValueError('Invalid archive lookup checkpoint')
   def elapsed():return previous_elapsed+time.monotonic()-began-(queue_wait_seconds()-queued_at_start)-(self.host_queue_wait_seconds()-host_queued_at_start)
   def handoff(next_phase,*,retry_at=None,**phase_state):
    # Candidate text and immutable evidence survive process and claim changes.
@@ -53,6 +85,9 @@ class Pipeline(Fetcher):
                'extractor_version':EXTRACTOR_VERSION,
                'best':copy.deepcopy(best),'unresolved':unresolved,'elapsed_seconds':max(0.,elapsed()),
                'archive_lookups':copy.deepcopy(archive_lookups),'archive_seen':sorted(archive_seen),
+               'publisher_unresolved':publisher_unresolved,'archive_first':archive_first,
+               'archive_first_done':archive_first_done,'archive_first_complete':archive_first_complete,
+               'archive_unresolved':archive_unresolved,'publisher_retry_at':publisher_retry_at,
                **copy.deepcopy(phase_state)}
    return {**result,'status':'queued','next_phase':next_phase,'retry_at':time.time() if retry_at is None else retry_at,
            '_checkpoint':checkpoint,'error':None}
@@ -61,6 +96,10 @@ class Pipeline(Fetcher):
    self.put(f'runs/{run}/toolbox/{aid}.json',json.dumps(result),'application/json')
   def active(name):
    with self.lock:self.live[aid]={'outlet':item['outlet'],'stage':name}
+  def publisher_handoff(complete,reason):
+   stage('archive_first','publisher_pending',reason=reason)
+   return handoff('publisher',elapsed_seconds=0.,unresolved=True,publisher_unresolved=True,
+    archive_first=False,archive_first_done=True,archive_first_complete=complete,archive_unresolved=unresolved)
   def service_wait(got):
    retry_at=got.get('service_retry_at')
    if retry_at is None:return None
@@ -77,6 +116,11 @@ class Pipeline(Fetcher):
    else:
     wait.update(retry_at=retry_at,waits=wait.get('waits',1)+1,last_wait_at=now(),reason=got.get('error'))
    # Waiting for a service to recover must not exhaust the per-pass work budget.
+   if archive_first and publisher_unresolved:
+    if publisher_retry_at is None or publisher_retry_at<=time.time():
+     return publisher_handoff(False,'Archive service wait; publisher work remains unattempted')
+    return handoff('archive',retry_at=min(retry_at,publisher_retry_at),elapsed_seconds=0.,
+     service_wait_until=retry_at,unresolved=True,archive_unresolved=unresolved)
    return handoff('archive',retry_at=retry_at,elapsed_seconds=0.,service_wait_until=retry_at)
   def consider(body,source,raw_uri,http_status=200,method='html'):
    nonlocal best,unresolved
@@ -145,7 +189,14 @@ class Pipeline(Fetcher):
      # Missing/invalid old evidence keeps the normal network recovery path.
      continue
   try:
-   if _phase=='archive' and _checkpoint.get('service_wait_until',0)>time.time():
+   if _phase=='archive' and archive_first and publisher_unresolved and (not best or best['quality']!='candidate') and publisher_retry_at is not None and publisher_retry_at<=time.time():
+    return publisher_handoff(False,'Publisher cooldown deadline reached')
+   if _phase=='archive' and (not best or best['quality']!='candidate') and _checkpoint.get('service_wait_until',0)>time.time():
+    if archive_first and publisher_unresolved:
+     wake=_checkpoint['service_wait_until']
+     if publisher_retry_at is None:return publisher_handoff(False,'Archive service wait; publisher work remains unattempted')
+     return handoff('archive',retry_at=min(wake,publisher_retry_at),elapsed_seconds=0.,service_wait_until=wake,
+      unresolved=True,archive_unresolved=unresolved)
     return handoff('archive',retry_at=_checkpoint['service_wait_until'],elapsed_seconds=0.,service_wait_until=_checkpoint['service_wait_until'])
    if _phase in ('browser','archive') and checkpoint_extractor!=EXTRACTOR_VERSION:
     reanalyse_stored_html()
@@ -154,6 +205,7 @@ class Pipeline(Fetcher):
     active('HTTP + extraction')
     first,analysis=retrieve(item['url'],'http')
     unresolved|=first['status'] in ('temporary_error','rate_limited','robots_unavailable')
+    publisher_unresolved=unresolved
     # Canonical/OG URLs are discovered from the response, never manually supplied.
     if not best or best['quality']!='candidate':
      choices=list(dict.fromkeys((analysis or {}).get('discovered',[])))[:2]
@@ -183,9 +235,9 @@ class Pipeline(Fetcher):
        stage('browser','rendered',raw_uri=raw,url=source);consider(body,source,raw,method='browser')
       except Exception as e:unresolved=True;stage('browser','deferred',reason=type(e).__name__+': '+str(e)[:250])
     else:stage('browser','not_needed',reason='Usable candidate already found')
-   if _phase in ('publisher','browser') and (not best or best['quality']!='candidate'):
+   if _phase in ('publisher','browser') and (not best or best['quality']!='candidate') and not archive_first_complete:
     return handoff('archive')
-   if not best or best['quality']!='candidate':
+   if (not best or best['quality']!='candidate') and not archive_first_complete:
     seen=set(archive_seen)
     for stamp in [str(item.get('first_observed','')).replace('-',''),'']:
      if elapsed()>300:
@@ -239,7 +291,9 @@ class Pipeline(Fetcher):
        if best and best['quality']=='candidate':break
      unresolved|=got['status'] in ('temporary_error','rate_limited','robots_unavailable')
      if best and best['quality']=='candidate':break
-   else:stage('archive','not_needed',reason='Usable candidate already found')
+   else:stage('archive','not_needed',reason='Archive recovery already completed before publisher attempt' if archive_first_complete else 'Usable candidate already found')
+   if _phase=='archive' and archive_first and publisher_unresolved and (not best or best['quality']!='candidate'):
+    return publisher_handoff(not unresolved,'Archive first did not recover verified full text')
    if best:
     data=gzip.compress(best['text'].encode(),mtime=0)
     result.update(text_uri=self.put(f'runs/{run}/extracted/{aid}.txt.gz',data,'application/gzip'),raw_uri=best['raw_uri'],final_url=best['url'],content_sha256=best['digest'],http_status=best['http_status'])
@@ -253,6 +307,11 @@ class Pipeline(Fetcher):
      # An archive transport failure must not restart those completed stages.
      retry=handoff('archive',elapsed_seconds=0.,unresolved=False)
      result['_retry_phase']='archive';result['_retry_checkpoint']=retry['_checkpoint']
+    elif archive_first_done:
+     # Preserve the archive-first marker and cumulative inner evidence even
+     # when the original publisher needs another normal retry pass.
+     retry=handoff('publisher',elapsed_seconds=0.,unresolved=False,publisher_unresolved=True)
+     result['_retry_phase']='publisher';result['_retry_checkpoint']=retry['_checkpoint']
     result['_retry_best']=copy.deepcopy(best)
    return result
   finally:

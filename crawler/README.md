@@ -1181,3 +1181,27 @@ All remaining work belongs to KenyaStar, and publisher rate limits can still
 constrain the tail after the ready archive backlog drains. The worker retains
 shared host pauses, retry checkpoints, durable results and its existing cost
 limits rather than treating these temporary failures as completed work.
+
+### Archive first during publisher cooldowns (r21, 2026-10-09)
+
+An explicit shared publisher cooldown now makes unfinished publisher URLs
+eligible for a metadata-only handoff into the existing archive queue. These
+handoffs and actual archive downloads share the eight-slot archive limit.
+Existing archive work has priority, publisher spacing or occupied host permits
+alone do not trigger this route, and actual HTTP still takes shared host leases.
+The normal fenced article claim and immutable checkpoint paths remain in use.
+
+Verified full text can finish directly from an archive. An archive miss or
+partial text returns to publisher work, retaining the original unattempted
+status, evidence and partial candidate. A completed preflight is not repeated.
+An archive outage wakes no later than the observed publisher cooldown deadline
+and then returns to publisher work; unfinished archive recovery remains
+available after a genuine publisher failure. These handoffs neither finish the
+article nor consume its publisher retry passes. A bounded local eligibility
+cache avoids repeatedly reading checkpoints already returned to the publisher.
+
+The combined suite passes 450 tests, including real TCP reuse, Chromium,
+durable worker/queue handoffs, missed snapshots, partial candidates, archive
+outages, checkpoint restarts and exact cumulative byte/retry accounting. This
+change preserves one worker, 48 article slots and the existing response,
+attempt and resource budgets.

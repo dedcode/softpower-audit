@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'crawler'))
 from crawl import Fetcher
 from pipeline import Pipeline
 from shared_hosts import (FirestoreHostStore, SharedHostCoordinator, SharedHostCooldown,
-                         HostLeaseLost, acquire_state)
+                         HostLeaseLost, acquire_state, Admission, publisher_in_cooldown)
 from test_crawler import Bucket
 from test_host_queue import Clock
 
@@ -73,6 +73,13 @@ class SharedHostTests(unittest.TestCase):
 
     def document(self):
         return next(iter(self.database.documents.values()))
+
+    def test_archive_first_requires_explicit_shared_cooldown(self):
+        self.assertTrue(publisher_in_cooldown(Admission(False, 300, 300)))
+        for state in (None, Admission(True), Admission(True, 0, 300),
+                      Admission(False, 2), Admission(False, 180),
+                      Admission(False, float('nan'), float('nan'))):
+            self.assertFalse(publisher_in_cooldown(state))
 
     def test_archive_override_matches_admission_and_keeps_publisher_limit(self):
         coordinator = SharedHostCoordinator(self.store, clock=self.clock.now,

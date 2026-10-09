@@ -46,6 +46,18 @@ class Admission:
     cooldown_seconds: float = 0.
 
 
+def publisher_in_cooldown(admission):
+    """Archive eligibility needs an explicit shared pause, not a full permit.
+
+    This advisory read never authorizes a publisher request. Spacing and lease
+    contention alone must not change which extraction phase runs first.
+    """
+    if admission is None or admission.acquired:
+        return False
+    seconds = float(admission.cooldown_seconds)
+    return math.isfinite(seconds) and seconds > 0
+
+
 def _capacity(value):
     if isinstance(value, bool) or int(value) != value or value < 1 or value > 32:
         raise ValueError('max_concurrency must be an integer between 1 and 32')

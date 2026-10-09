@@ -2,6 +2,7 @@ import gzip
 import json
 import time
 import unittest
+from collections import OrderedDict
 from unittest.mock import patch
 from test_distributed_worker import bare_run, claim
 
@@ -69,6 +70,53 @@ class DistributedPhasesTests(unittest.TestCase):
         run.fetcher.fetch_phase.assert_called_once_with(item.item, run.run_id, run.country,
                                                         phase='archive', checkpoint=checkpoint)
         self.assertIsNone(run.fetcher.request_context.output_scope)
+
+    def test_archive_first_uses_only_metadata_factory_then_fenced_handoff(self):
+        run, item = self.prepare()
+        item.archive_first = True
+        item.publisher_retry_at = time.time() + 300
+        result = {**item.item, 'article_id': item.article_id, **self.queued()}
+        run.fetcher.archive_first_handoff = unittest.mock.Mock(return_value=result)
+        fetched = run.fetch_claim(item)
+        run.fetcher.fetch_phase.assert_not_called()
+        run.fetcher.archive_first_handoff.assert_called_once_with(
+            item.item, run.run_id, run.country, checkpoint=None,
+            publisher_retry_at=item.publisher_retry_at)
+        run.persist_result(item, fetched)
+        run.queue.handoff.assert_called_once()
+        run.queue.complete.assert_not_called()
+        self.assertNotIn(item.article_id, run.claims)
+
+    def test_already_tried_archive_releases_publisher_without_http_or_new_evidence(self):
+        run, item = self.prepare()
+        item.archive_first = True
+        item.publisher_retry_at = time.time() + 300
+        item.checkpoint_uri = 'gs://private-test/' + run.prefix + 'distributed/checkpoints/' + item.article_id + '/old-token.json.gz'
+        checkpoint = {'archive_first_done': True, 'prior': 'original publisher pending'}
+        run.bucket.blob.return_value.download_as_bytes.return_value = gzip.compress(json.dumps({
+            'article_id': item.article_id, 'run_id': run.run_id,
+            'phase': 'publisher', 'checkpoint': checkpoint}).encode())
+        run.fetcher.archive_first_handoff = unittest.mock.Mock(return_value=None)
+        fetched = run.fetch_claim(item)
+        run.persist_result(item, fetched)
+        run.fetcher.fetch_phase.assert_not_called()
+        run.queue.release.assert_called_once_with(item)
+        run.queue.handoff.assert_not_called()
+        run.queue.complete.assert_not_called()
+        run.bucket.blob.return_value.upload_from_string.assert_not_called()
+        self.assertIn(item.item['url'], run.archive_first_ineligible)
+        self.assertNotIn(item.article_id, run.claims)
+
+    def test_archive_first_eligibility_cache_has_bounded_memory(self):
+        run, item = self.prepare()
+        item.archive_first = True
+        item.publisher_retry_at = time.time() + 300
+        run.archive_first_ineligible = OrderedDict((str(i), None) for i in range(4096))
+        run.fetcher.archive_first_handoff = unittest.mock.Mock(return_value=None)
+        run.fetch_claim(item)
+        self.assertEqual(len(run.archive_first_ineligible), 4096)
+        self.assertNotIn('0', run.archive_first_ineligible)
+        self.assertIn(item.item['url'], run.archive_first_ineligible)
 
     def test_foreign_checkpoint_is_rejected(self):
         run, item = self.prepare('archive')

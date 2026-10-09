@@ -47,6 +47,28 @@ def migrate_legacy_archive_retry(state,item,run,country):
 class RetryingPipeline(Pipeline):
  retry_passes=2
  retry_delay=30
+ def archive_first_handoff(self,item,run,country,*,checkpoint=None,publisher_retry_at=None):
+  """Route explicitly requested unfinished publisher work to the archive pool."""
+  self.check_running();aid=key(item['url'])
+  state=copy.deepcopy(checkpoint) if checkpoint is not None else {
+   'version':1,'kind':'phased-toolbox','article_id':aid,'run_id':run,'country':country,
+   'next_phase':'publisher','completed_passes':0,'attempts':[],
+   'response_bytes':0,'stored_bytes':0,'pipeline':None,'retry_best':None}
+  if not isinstance(state,dict) or state.get('version')!=1 or state.get('kind')!='phased-toolbox':raise ValueError('Invalid phased extraction checkpoint')
+  if (state.get('article_id'),state.get('run_id'),state.get('country'))!=(aid,run,country):raise ValueError('Checkpoint belongs to a different article or run')
+  passes=state.get('completed_passes')
+  if type(passes) is not int or passes<0:raise ValueError('Invalid checkpoint retry passes')
+  pipeline=state.get('pipeline')
+  if state.get('next_phase')!='publisher' or passes>=self.retry_passes or state.get('archive_first_done') or (isinstance(pipeline,dict) and pipeline.get('archive_first_done')):return None
+  if pipeline is None:pipeline={'version':1,'next_phase':'publisher','best':state.get('retry_best')}
+  pipeline=self.archive_first_checkpoint(item,run,country,checkpoint=pipeline,publisher_retry_at=publisher_retry_at)
+  state.update(next_phase='archive',pipeline=pipeline)
+  result=pipeline['result'];self.check_running()
+  return {**result,'status':'queued','next_phase':'archive','retry_at':time.time(),
+   'attempts':state['attempts']+result['attempts'],
+   'response_bytes':state['response_bytes']+result.get('response_bytes',0),
+   'stored_bytes':state['stored_bytes']+result.get('stored_bytes',0),'updated_at':now(),
+   '_checkpoint':state,'error':None}
  def fetch_phase(self,item,run,country,*,phase='publisher',checkpoint=None):
   """Run one durable phase; waiting for a future retry never occupies a slot."""
   self.check_running()
@@ -72,7 +94,10 @@ class RetryingPipeline(Pipeline):
    # The new pass refreshes transient publisher/robots failures, retaining any
    # earlier partial text even if this attempt cannot retrieve that page again.
    with self.lock:self.robots={k:v for k,v in self.robots.items() if v[1]}
-   pipeline_checkpoint={'version':1,'next_phase':'publisher','best':state['retry_best']}
+   if not (isinstance(pipeline_checkpoint,dict) and pipeline_checkpoint.get('archive_first_done')):
+    pipeline_checkpoint={'version':1,'next_phase':'publisher','best':state['retry_best'],
+     'archive_first_done':bool(state.get('archive_first_done',False)),
+     'archive_first_complete':bool(state.get('archive_first_complete',False))}
   result=super().fetch_phase(item,run,country,phase=phase,checkpoint=pipeline_checkpoint)
   self.check_running()
   pipeline_state=result.pop('_checkpoint',None)
@@ -83,15 +108,19 @@ class RetryingPipeline(Pipeline):
             'stored_bytes':state['stored_bytes']+result.get('stored_bytes',0),'updated_at':now()}
   if result['status']=='queued':
    state.update(next_phase=result['next_phase'],pipeline=pipeline_state)
+   if isinstance(pipeline_state,dict) and pipeline_state.get('archive_first_done'):
+    state['archive_first_done']=True;state['archive_first_complete']=bool(pipeline_state.get('archive_first_complete',False))
    combined['_checkpoint']=state
    return combined
   if result['status']=='deferred':
    passes+=1
    if passes<self.retry_passes:
-    if retry_phase=='archive' and isinstance(retry_checkpoint,dict):
+    if retry_phase in ('archive','publisher') and isinstance(retry_checkpoint,dict):
      # The checkpoint already contains this pass's cumulative evidence. Keep
      # the earlier pass prefix separately, avoiding duplicated HTTP counters.
-     state.update(next_phase='archive',completed_passes=passes,pipeline=retry_checkpoint,retry_best=retry_best)
+     state.update(next_phase=retry_phase,completed_passes=passes,pipeline=retry_checkpoint,retry_best=retry_best)
+     if retry_checkpoint.get('archive_first_done'):
+      state['archive_first_done']=True;state['archive_first_complete']=bool(retry_checkpoint.get('archive_first_complete',False))
     else:
      retry_phase='publisher'
      state.update(next_phase=retry_phase,completed_passes=passes,pipeline=None,retry_best=retry_best,

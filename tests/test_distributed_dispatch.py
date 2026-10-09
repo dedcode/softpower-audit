@@ -1,6 +1,6 @@
 import time
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from test_distributed_worker import bare_run, worker_record
 from shared_queue import Claim, article_key
@@ -80,6 +80,96 @@ class DistributedDispatchTests(unittest.TestCase):
         run.queue.complete.assert_not_called()
         run.queue.handoff.assert_not_called()
         self.assertEqual(run.claims, {})
+
+    def archive_first_run(self, items, states, archive_backlog=()):
+        """Model bounded fenced claims, including the queue's per-outlet cap."""
+        run = bare_run()
+        run.verification = False
+        run.config['workers'] = 48
+        run.fetcher.dispatch_availability = Mock(side_effect=lambda hosts: {
+            host: states[host] for host in hosts})
+        run.fetcher.archive_first_handoff = Mock()
+        leased = set()
+
+        def reserve(**kwargs):
+            if kwargs['phase'] == 'browser':
+                return []
+            if kwargs['phase'] == 'archive':
+                return list(archive_backlog)[:kwargs['limit']]
+            kwargs['prepare_admission'](items)
+            selected = []
+            counts = dict(kwargs['inflight'])
+            for item in items:
+                outlet = item['outlet']
+                if (item['url'] in leased or counts.get(outlet, 0) >= kwargs['per_outlet']
+                        or not kwargs['admit'](item)):
+                    continue
+                selected.append(Claim(article_key(item['url']), 'token', item, time.time() + 600))
+                leased.add(item['url'])
+                counts[outlet] = counts.get(outlet, 0) + 1
+                if len(selected) == kwargs['limit']:
+                    break
+            return selected
+
+        run.queue.claim.side_effect = reserve
+        return run
+
+    def test_cooldown_fills_eight_archive_handoffs_without_waiting_publisher_threads(self):
+        items = [article('https://cooling.ke/' + str(i), 'cooling.ke') for i in range(20)]
+        items.append(article('https://ready.ke/a', 'ready.ke'))
+        run = self.archive_first_run(items, {'cooling.ke': Admission(False, 300, 300),
+                                            'ready.ke': Admission(True)})
+        with patch.dict('os.environ', {'CRAWL_ARCHIVE_SLOTS': '8'}), patch('distributed_worker.time.time', return_value=1000):
+            selected = run.claim_available()
+        metadata = [claim for claim in selected if getattr(claim, 'archive_first', False)]
+        self.assertEqual(len(metadata), 8)
+        self.assertEqual(len(selected), 9)
+        self.assertTrue(all(claim.publisher_retry_at == 1300 for claim in metadata))
+        self.assertEqual(selected[0].item['url'], 'https://ready.ke/a')
+        self.assertEqual(run.queue.claim.call_args.kwargs['per_outlet'], 8)
+        run.fetcher.fetch_phase.assert_not_called()
+        run.queue.complete.assert_not_called()
+
+    def test_active_handoffs_reserve_archive_capacity_alongside_archive_downloads(self):
+        items = [article('https://cooling.ke/' + str(i), 'cooling.ke') for i in range(20)]
+        run = self.archive_first_run(items, {'cooling.ke': Admission(False, 300, 300)})
+        for i in range(7):
+            active = Claim('active-' + str(i), 'token', article('https://cooling.ke/active-' + str(i),
+                           'cooling.ke'), time.time() + 600, phase='archive' if i < 6 else 'publisher')
+            if i == 6:
+                active.archive_first = True
+            run.claims[active.article_id] = active
+        with patch.dict('os.environ', {'CRAWL_ARCHIVE_SLOTS': '8'}):
+            selected = run.claim_available()
+        self.assertEqual(len(selected), 1)
+        self.assertTrue(selected[0].archive_first)
+        self.assertEqual(run.queue.claim.call_args.kwargs['limit'], 1)
+        self.assertEqual(run.queue.claim.call_args.kwargs['inflight']['cooling.ke'], 7)
+
+    def test_existing_archive_backlog_gets_pool_before_new_handoffs(self):
+        items = [article('https://cooling.ke/' + str(i), 'cooling.ke') for i in range(20)]
+        backlog = [Claim('archive-' + str(i), 'token', items[i], time.time() + 600, phase='archive')
+                   for i in range(8)]
+        run = self.archive_first_run(items, {'cooling.ke': Admission(False, 300, 300)}, backlog)
+        with patch.dict('os.environ', {'CRAWL_ARCHIVE_SLOTS': '8'}):
+            selected = run.claim_available()
+        self.assertEqual(selected, backlog)
+        self.assertFalse(any(getattr(claim, 'archive_first', False) for claim in selected))
+        self.assertEqual(len(run.queue.claim.call_args_list), 3)
+
+    def test_spacing_or_full_permits_do_not_trigger_archive_first_and_checked_urls_wait_for_publisher(self):
+        items = [article('https://spacing.ke/a'), article('https://full.ke/a'),
+                 article('https://cooling.ke/already-checked')]
+        run = self.archive_first_run(items, {'spacing.ke': Admission(False, 2),
+            'full.ke': Admission(False, 180), 'cooling.ke': Admission(False, 300, 300)})
+        run.archive_first_ineligible = {'https://cooling.ke/already-checked': None}
+        with patch.dict('os.environ', {'CRAWL_ARCHIVE_SLOTS': '8'}):
+            self.assertEqual(run.claim_available(), [])
+            run.fetcher.dispatch_availability.side_effect = lambda hosts: {
+                host: Admission(True) for host in hosts}
+            selected = run.claim_available()
+        self.assertEqual(len(selected), 3)
+        self.assertFalse(any(getattr(claim, 'archive_first', False) for claim in selected))
 
     def test_heartbeat_reports_actual_network_activity(self):
         run = bare_run()

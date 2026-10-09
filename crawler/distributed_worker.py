@@ -7,6 +7,7 @@ import re
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlsplit
@@ -18,6 +19,7 @@ import worker
 from worker import Run
 from crawl import now
 from shared_queue import SharedQueue
+from shared_hosts import publisher_in_cooldown
 from memory_recovery import Recovery, reclaim_memory
 from result_store import memory_usage, encode_jsonl, JsonlBatch
 
@@ -64,6 +66,7 @@ class DistributedRun(Run):
         self.claims = {}
         self.deadlines = {}
         self.claim_lock = threading.Lock()
+        self.archive_first_ineligible = OrderedDict()
         self.worker_state = 'starting'
         self.last_heartbeat = 0
         self.last_export = time.monotonic()
@@ -265,8 +268,27 @@ class DistributedRun(Run):
                             or envelope.get('phase') != claim.phase):
                         raise RuntimeError('Phase checkpoint does not match its queued article')
                     checkpoint = envelope['checkpoint']
-                result = self.fetcher.fetch_phase(claim.item, self.run_id, self.country,
-                                                  phase=claim.phase, checkpoint=checkpoint)
+                if getattr(claim, 'archive_first', False):
+                    result = self.fetcher.archive_first_handoff(
+                        claim.item, self.run_id, self.country, checkpoint=checkpoint,
+                        publisher_retry_at=claim.publisher_retry_at)
+                else:
+                    result = self.fetcher.fetch_phase(claim.item, self.run_id, self.country,
+                                                      phase=claim.phase, checkpoint=checkpoint)
+                if result is None and getattr(claim, 'archive_first', False):
+                    # A durable checkpoint says archives have already been
+                    # tried. Leave publisher work unfinished without entering
+                    # its network path during the shared pause. Remember this
+                    # bounded eligibility result until the worker restarts.
+                    with self.claim_lock:
+                        cache = getattr(self, 'archive_first_ineligible', None)
+                        if cache is None:
+                            cache = self.archive_first_ineligible = OrderedDict()
+                        cache[claim.item['url']] = None
+                        cache.move_to_end(claim.item['url'])
+                        while len(cache) > 4096:
+                            cache.popitem(last=False)
+                    result = {'status': 'publisher_pending', '_release_for_cooldown': True}
             # Infrastructure cancellation is never a terminal extraction failure.
             # A successfully preserved article may still commit if its fence holds.
             if result.get('status') != 'saved':
@@ -286,6 +308,7 @@ class DistributedRun(Run):
         self.dispatch_retry_seconds = None
         with self.claim_lock:
             active = list(self.claims.values())
+            archive_first_ineligible = set(getattr(self, 'archive_first_ineligible', ()))
         capacity = self.config['workers'] - len(active)
         if capacity <= 0:
             return []
@@ -301,9 +324,11 @@ class DistributedRun(Run):
         # lease. Cache each hostname once per refill and dispatch at most one
         # article for it, instead of filling every task with waiting URLs.
         availability = {}
+        cooldown_deadlines = {}
         considered = set()
         readiness_disabled = False
         dispatch_availability = getattr(self.fetcher, 'dispatch_availability', None)
+        archive_first_handoff = getattr(self.fetcher, 'archive_first_handoff', None)
 
         def hostname(item):
             try:
@@ -324,6 +349,10 @@ class DistributedRun(Run):
                     readiness_disabled = True
                 else:
                     availability.update(states)
+                    checked_at = time.time()
+                    cooldown_deadlines.update({host: checked_at + state.cooldown_seconds
+                                               for host, state in states.items()
+                                               if publisher_in_cooldown(state)})
                     # A full host may free a permit before its crash-recovery
                     # lease expires. Recheck it within three seconds instead of
                     # treating blocked URLs like an empty queue and backing off
@@ -346,7 +375,9 @@ class DistributedRun(Run):
             return True
 
         for phase, limit in (('publisher', publisher_limit), ('browser', recovery_limit), ('archive', archive_limit)):
-            phase_claims = [claim for claim in active if claim.phase == phase]
+            phase_claims = [claim for claim in active
+                            if (claim.phase == phase and not getattr(claim, 'archive_first', False))
+                            or (phase == 'archive' and getattr(claim, 'archive_first', False))]
             available = min(capacity, max(0, limit - len(phase_claims)))
             if not available:
                 continue
@@ -362,6 +393,31 @@ class DistributedRun(Run):
                                       **admission)
             selected.extend(claims)
             capacity -= len(claims)
+        # A paused publisher must not leave otherwise-idle archive slots empty.
+        # These are ordinary fenced publisher claims running only a checkpoint
+        # handoff; the archive download starts after its separate durable claim.
+        # Reserve the same pool budget for handoffs and active archive work.
+        archive_active = sum(claim.phase == 'archive' or getattr(claim, 'archive_first', False)
+                             for claim in [*active, *selected])
+        archive_available = min(capacity, max(0, archive_limit - archive_active))
+        if (archive_available and not self.verification and callable(dispatch_availability)
+                and callable(archive_first_handoff) and not readiness_disabled):
+            def admit_archive_first(item):
+                if readiness_disabled or item.get('url') in archive_first_ineligible:
+                    return False
+                host = hostname(item)
+                return host is not None and publisher_in_cooldown(availability.get(host))
+
+            recovery_claims = [claim for claim in [*active, *selected]
+                               if claim.phase == 'archive' or getattr(claim, 'archive_first', False)]
+            claims = self.queue.claim(limit=archive_available, per_outlet=archive_limit,
+                                      inflight=Counter(claim.item['outlet'] for claim in recovery_claims),
+                                      phase='publisher', admit=admit_archive_first,
+                                      prepare_admission=prepare_admission)
+            for claim in claims:
+                claim.archive_first = True
+                claim.publisher_retry_at = cooldown_deadlines[hostname(claim.item)]
+            selected.extend(claims)
         return selected
 
     def update_deadlines(self, claims):
@@ -494,6 +550,10 @@ class DistributedRun(Run):
             self.forget_claim(claim)
 
     def persist_result(self, claim, result):
+        if result.get('_release_for_cooldown'):
+            self.request_guard(claim.article_id)
+            self.release_claim(claim)
+            return
         if result.get('status') == 'queued':
             self.request_guard(claim.article_id)
             phase = result['next_phase']
