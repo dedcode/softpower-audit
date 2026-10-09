@@ -10,7 +10,7 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'crawler'))
 from crawl import Fetcher,key
 from extractor_version import VERSION as EXTRACTOR_VERSION
-from retrying import RetryingPipeline
+from retrying import RetryingPipeline,migrate_legacy_archive_retry
 from test_retrying import Bucket
 from test_host_queue import Clock
 
@@ -151,6 +151,80 @@ class PhasedPipelineTests(unittest.TestCase):
   self.assertEqual(checkpoint,before,'Input checkpoint must remain reusable after a crash')
   self.assertNotIn('_checkpoint',result)
 
+ def test_temporary_publisher_robots_failure_and_no_archive_keeps_later_publisher_retry(self):
+  with patch.object(self.pipeline,'policy',return_value=(None,False,3,'gs://test/robots/temporary')) as policy, \
+       patch.object(self.pipeline,'one') as network,patch.object(self.pipeline,'render') as render:
+   queued=self.pipeline.fetch_phase(self.item,'run','KE')
+  policy.assert_called_once_with(self.item['url']);network.assert_not_called();render.assert_not_called()
+  self.assertEqual((queued['status'],queued['next_phase']),('queued','archive'))
+  self.assertTrue(queued['_checkpoint']['pipeline']['unresolved'])
+  self.assertEqual([event['status'] for event in queued['attempts'] if event['stage']=='http'],['robots_unavailable'])
+  archive,checkpoint=self.resume(queued,self.worker('temporary-robots-archive'))
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(archive,'one',return_value=self.no_snapshot) as lookup, \
+       patch('retrying.time.time',return_value=1000),patch('retrying.time.sleep') as sleep:
+   retry=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  fetch.assert_not_called();self.assertEqual(lookup.call_count,2);sleep.assert_not_called()
+  self.assertEqual((retry['status'],retry['next_phase'],retry['retry_at']),('queued','publisher',1030))
+  self.assertEqual(retry['_checkpoint']['completed_passes'],1)
+  # A later successful robots check permits one publisher retrieval. The
+  # temporary failure was neither bypassed nor finalized as exhaustion.
+  publisher=self.worker('temporary-robots-recovered')
+  with patch.object(publisher,'policy',return_value=(None,True,3,'gs://test/robots/recovered')) as policy, \
+       patch.object(publisher,'one',return_value=(200,{'Content-Type':'text/html'},b'<article>Original story</article>',False)) as network, \
+       patch.object(publisher,'read',return_value=b'<article>Original story</article>'), \
+       patch('pipeline.extract',return_value={'quality':'candidate','text':'Recovered complete article'}), \
+       patch.object(publisher,'render') as render:
+   recovered=publisher.fetch_phase(self.item,'run','KE',checkpoint=json.loads(json.dumps(retry['_checkpoint'])))
+  policy.assert_called_once_with(self.item['url']);network.assert_called_once_with(self.item['url'],3);render.assert_not_called()
+  self.assertEqual(recovered['status'],'saved')
+  self.assertEqual(gzip.decompress(self.bucket.data[recovered['raw_uri'].removeprefix('gs://test/')]),b'<article>Original story</article>')
+  self.assertEqual(sum(event['stage']=='http' for event in recovered['attempts']),2)
+
+ def test_permanent_robots_disallow_is_distinct_from_temporary_failure_and_never_bypassed(self):
+  from urllib.robotparser import RobotFileParser
+  parser=RobotFileParser();parser.parse(['User-agent: *','Disallow: /'])
+  with patch.object(self.pipeline,'policy',return_value=(parser,True,3,'gs://test/robots/disallow')), \
+       patch.object(self.pipeline,'one') as network,patch.object(self.pipeline,'render') as render:
+   queued=self.pipeline.fetch_phase(self.item,'run','KE')
+  network.assert_not_called();render.assert_not_called()
+  self.assertFalse(queued['_checkpoint']['pipeline']['unresolved'])
+  self.assertEqual([event['status'] for event in queued['attempts'] if event['stage']=='http'],['robots_denied'])
+  archive,checkpoint=self.resume(queued,self.worker('disallowed-archive'))
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(archive,'one',return_value=self.no_snapshot), \
+       patch.object(archive,'render') as render:
+   result=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  fetch.assert_not_called();render.assert_not_called()
+  self.assertEqual(result['status'],'exhausted');self.assertNotIn('_checkpoint',result)
+
+ def test_discovered_publisher_url_temporary_robots_failure_remains_unresolved(self):
+  canonical='https://publisher.example/canonical-story'
+  original={**self.missing,'status':'retrieved','http_status':200,'raw_uri':'gs://test/raw/initial','final_url':self.item['url']}
+  unavailable={'status':'robots_unavailable','attempts':[{'status':'robots_unavailable'}],
+               'http_status':None,'raw_uri':None,'response_bytes':0,'stored_bytes':0}
+  with patch.object(Fetcher,'fetch',side_effect=[original,unavailable]) as fetch, \
+       patch.object(self.pipeline,'read',return_value=b'Article page with canonical link'), \
+       patch('pipeline.extract',return_value={'quality':'missing','text':'','discovered':[canonical],'paywall':True}), \
+       patch.object(self.pipeline,'render') as render:
+   queued=self.pipeline.fetch_phase(self.item,'run','KE')
+  self.assertEqual([call.args[0]['url'] for call in fetch.call_args_list],[self.item['url'],canonical])
+  render.assert_not_called();self.assertTrue(queued['_checkpoint']['pipeline']['unresolved'])
+  archive,checkpoint=self.resume(queued,self.worker('discovery-robots-archive'))
+  with patch.object(archive,'one',return_value=self.no_snapshot):
+   retry=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  self.assertEqual((retry['status'],retry['next_phase']),('queued','publisher'))
+
+ def test_archive_robots_unavailable_without_service_wait_retains_archive_retry(self):
+  queued=self.publisher_missing();archive,checkpoint=self.resume(queued)
+  snapshot='https://web.archive.org/web/20200102/https://publisher.example/story'
+  payload=json.dumps({'archived_snapshots':{'closest':{'available':True,'url':snapshot,'timestamp':'20200102'}}}).encode()
+  unavailable={'status':'robots_unavailable','attempts':[{'status':'robots_unavailable'}],
+               'http_status':None,'raw_uri':None,'response_bytes':0,'stored_bytes':0}
+  with patch.object(archive,'one',return_value=(200,{},payload,False)),patch.object(Fetcher,'fetch',return_value=unavailable):
+   retry=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  self.assertEqual((retry['status'],retry['next_phase']),('queued','archive'))
+  self.assertEqual(retry['_checkpoint']['completed_passes'],1)
+  self.assertEqual(retry['_checkpoint']['pipeline']['archive_seen'],[])
+
  def test_partial_text_survives_handoff_to_another_claim(self):
   body=b'publisher page';text='Retained partial article text'
   got={**self.missing,'status':'retrieved','http_status':200,'raw_uri':'gs://test/raw/immutable','final_url':self.item['url']}
@@ -199,7 +273,7 @@ class PhasedPipelineTests(unittest.TestCase):
    result=self.pipeline.fetch_phase(self.item,'run','KE')
   self.assertEqual(result['status'],'saved');self.assertNotIn('_checkpoint',result);lookup.assert_not_called()
 
- def test_full_retry_pass_is_scheduled_without_sleep_and_counts_each_pass_once(self):
+ def test_archive_retry_is_scheduled_without_repeating_completed_publisher(self):
   current=self.publisher_missing()
   for pass_index in range(2):
    archive,checkpoint=self.resume(current,self.worker('archive-'+str(pass_index)))
@@ -209,17 +283,13 @@ class PhasedPipelineTests(unittest.TestCase):
    self.assertEqual(lookup.call_count,4,'Both historical/latest lookups retain both attempts')
    self.assertEqual([call.args[0] for call in sleep.call_args_list],[5,5])
    if pass_index==0:
-    self.assertEqual((recovered['status'],recovered['next_phase'],recovered['retry_at']),('queued','publisher',1030))
-    publisher=self.worker('publisher-second')
-    with patch.object(Fetcher,'fetch',return_value=copy.deepcopy(self.missing)) as fetch, \
-         patch('retrying.time.sleep') as sleep,patch.object(publisher,'one') as lookup:
-     current=publisher.fetch_phase(self.item,'run','KE',phase='publisher',checkpoint=recovered['_checkpoint'])
-    fetch.assert_called_once();sleep.assert_not_called();lookup.assert_not_called()
+    self.assertEqual((recovered['status'],recovered['next_phase'],recovered['retry_at']),('queued','archive',1030))
+    current=recovered
     self.assertEqual(current['_checkpoint']['completed_passes'],1)
    else:
     self.assertEqual(recovered['status'],'failed');self.assertNotIn('_checkpoint',recovered)
-    self.assertEqual((recovered['response_bytes'],recovered['stored_bytes']),(20,8))
-    self.assertEqual(sum(event['stage']=='http' for event in recovered['attempts']),2)
+    self.assertEqual((recovered['response_bytes'],recovered['stored_bytes']),(10,4))
+    self.assertEqual(sum(event['stage']=='http' for event in recovered['attempts']),1)
     self.assertEqual(sum(event['stage']=='archive_lookup' for event in recovered['attempts']),8)
 
  def test_partial_candidate_is_not_lost_when_a_later_retry_cannot_retrieve_publisher(self):
@@ -267,7 +337,8 @@ class PhasedPipelineTests(unittest.TestCase):
   archive,checkpoint=self.resume(queued)
   with patch.object(archive,'one') as lookup:
    result=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
-  lookup.assert_not_called();self.assertEqual((result['status'],result['next_phase']),('queued','publisher'))
+  lookup.assert_not_called();self.assertEqual((result['status'],result['next_phase']),('queued','archive'))
+  self.assertEqual(result['_checkpoint']['pipeline']['elapsed_seconds'],0.)
 
  def test_checkpoint_cannot_be_reused_for_another_article_or_phase(self):
   queued=self.publisher_missing();archive,checkpoint=self.resume(queued)
@@ -275,6 +346,201 @@ class PhasedPipelineTests(unittest.TestCase):
    with self.subTest(item=item,phase=phase),patch.object(Fetcher,'fetch') as fetch:
     with self.assertRaises(ValueError):archive.fetch_phase(item,'run','KE',phase=phase,checkpoint=checkpoint)
    fetch.assert_not_called()
+
+ def test_archive_service_wait_survives_restart_without_consuming_article_retries(self):
+  current=self.publisher_missing()
+  snapshot='https://web.archive.org/web/20200102/https://publisher.example/story'
+  payload=json.dumps({'archived_snapshots':{'closest':{'available':True,'url':snapshot,'timestamp':'20200102'}}}).encode()
+  for index in range(5):
+   worker,checkpoint=self.resume(current,self.worker('service-wait-'+str(index)))
+   unavailable={'status':'robots_unavailable','attempts':[], 'http_status':None,'raw_uri':None,
+                'service_retry_at':1000+30*(index+1),'final_url':snapshot,'error':'Archive robots service is cooling down'}
+   with patch('pipeline.time.time',return_value=1000+30*index), \
+        patch.object(worker,'one',return_value=(200,{},payload,False)) as lookup, \
+        patch.object(Fetcher,'fetch',return_value=unavailable) as fetch:
+    current=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+   self.assertEqual(current['status'],'queued');self.assertEqual(current['next_phase'],'archive')
+   self.assertEqual(current['_checkpoint']['completed_passes'],0)
+   self.assertEqual(current['_checkpoint']['pipeline']['elapsed_seconds'],0.)
+   self.assertEqual(lookup.call_count,int(index==0),'Successful availability lookup is reused across claims')
+   self.assertEqual(fetch.call_args.args[0]['url'],snapshot)
+   self.assertEqual(sum(event['stage']=='http' for event in current['attempts']),1)
+   waits=[event for event in current['attempts'] if event['stage']=='archive_service_wait']
+   self.assertEqual(len(waits),1);self.assertEqual(waits[0]['waits'],index+1)
+  worker,checkpoint=self.resume(current,self.worker('service-recovered'))
+  got={'status':'retrieved','attempts':[{'http_status':200}], 'http_status':200,'raw_uri':'gs://test/raw/full',
+       'final_url':snapshot,'response_bytes':30,'stored_bytes':8}
+  with patch('pipeline.time.time',return_value=1150),patch.object(worker,'one') as lookup, \
+       patch.object(Fetcher,'fetch',return_value=got),patch.object(worker,'read',return_value=b'preserved archive HTML'), \
+       patch('pipeline.extract',return_value={'quality':'candidate','text':'Complete recovered original article'}):
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  lookup.assert_not_called();self.assertEqual(result['status'],'saved')
+  self.assertEqual((result['response_bytes'],result['stored_bytes']),(40,12+len(gzip.compress(b'Complete recovered original article',mtime=0))))
+  self.assertEqual(sum(event['stage']=='archive_lookup' for event in result['attempts']),1)
+  self.assertEqual(sum(event['stage']=='http' for event in result['attempts']),1)
+  uri=checkpoint['pipeline']['archive_lookups']['20200102']['lookup_uri']
+  self.assertIn('/service-wait-0/archive-lookups/',uri)
+
+ def test_service_wait_due_time_does_not_issue_early_network_requests(self):
+  current=self.publisher_missing();worker,checkpoint=self.resume(current)
+  checkpoint['pipeline']['service_wait_until']=2000
+  with patch('pipeline.time.time',return_value=1000),patch.object(worker,'one') as lookup,patch.object(Fetcher,'fetch') as fetch:
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  lookup.assert_not_called();fetch.assert_not_called()
+  self.assertEqual((result['status'],result['next_phase'],result['retry_at']),('queued','archive',2000))
+  self.assertEqual(result['_checkpoint']['completed_passes'],0)
+
+ def test_archive_rate_limit_preserves_response_body_and_http_evidence_while_queued(self):
+  current=self.publisher_missing();worker,checkpoint=self.resume(current)
+  snapshot='https://web.archive.org/web/20200102/https://publisher.example/story'
+  payload=json.dumps({'archived_snapshots':{'closest':{'available':True,'url':snapshot,'timestamp':'20200102'}}}).encode()
+  got={'status':'rate_limited','attempts':[{'http_status':429,'response_metadata_uri':'gs://test/response/original'}],
+       'http_status':429,'raw_uri':'gs://test/raw/original-429','response_bytes':12,'stored_bytes':8,
+       'service_retry_at':1030,'final_url':snapshot}
+  with patch('pipeline.time.time',return_value=1000),patch.object(worker,'one',return_value=(200,{},payload,False)), \
+       patch.object(Fetcher,'fetch',return_value=got),patch.object(worker,'read',return_value=b'Rate limit body'),patch('pipeline.extract') as extract:
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  extract.assert_not_called();self.assertEqual(result['status'],'queued')
+  evidence=[event for event in result['attempts'] if event['stage']=='archive']
+  self.assertEqual(evidence[0]['raw_uri'],got['raw_uri']);self.assertEqual(evidence[0]['http_attempts'],got['attempts'])
+  self.assertEqual(evidence[0]['snapshot_timestamp'],'20200102')
+  self.assertEqual((result['response_bytes'],result['stored_bytes']),(22,12))
+  self.assertEqual(result['_checkpoint']['completed_passes'],0)
+
+ def test_archive_only_retry_preserves_successful_negative_lookup_without_duplicate_metrics(self):
+  current=self.publisher_missing();worker,checkpoint=self.resume(current)
+  with patch.object(worker,'one',side_effect=[self.no_snapshot,TimeoutError('latest unavailable'),TimeoutError('latest unavailable')]), \
+       patch('pipeline.time.sleep'):
+   queued=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  self.assertEqual((queued['next_phase'],queued['_checkpoint']['completed_passes']),('archive',1))
+  worker,checkpoint=self.resume(queued,self.worker('archive-second'))
+  with patch.object(worker,'one',return_value=self.no_snapshot) as lookup,patch.object(Fetcher,'fetch') as fetch:
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  fetch.assert_not_called();lookup.assert_called_once()
+  self.assertNotIn('timestamp=',lookup.call_args.args[0])
+  self.assertEqual(result['status'],'exhausted')
+  self.assertEqual((result['response_bytes'],result['stored_bytes']),(10,4))
+  self.assertEqual(sum(event['stage']=='http' for event in result['attempts']),1)
+  self.assertEqual(sum(event['stage']=='archive_lookup' and event['status']=='checked' for event in result['attempts']),2)
+
+ def test_availability_service_cooldown_schedules_without_lookup_or_retry_sleep(self):
+  current=self.publisher_missing();worker,checkpoint=self.resume(current)
+  with patch.object(worker,'archive_service_retry_at',return_value=1030,create=True), \
+       patch('pipeline.time.time',return_value=1000),patch.object(worker,'one') as lookup, \
+       patch('pipeline.time.sleep') as sleep:
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  lookup.assert_not_called();sleep.assert_not_called()
+  self.assertEqual((result['status'],result['next_phase'],result['retry_at']),('queued','archive',1030))
+  self.assertEqual(result['_checkpoint']['completed_passes'],0)
+
+ def test_invalid_cached_availability_is_rejected_before_replay(self):
+  current=self.publisher_missing();worker,checkpoint=self.resume(current)
+  checkpoint['pipeline']['archive_lookups']={'20200102':{'payload':['not','an','object']}}
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(worker,'one') as lookup:
+   with self.assertRaisesRegex(ValueError,'Invalid cached archive'):worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  fetch.assert_not_called();lookup.assert_not_called()
+
+ def test_availability_transport_outage_queues_service_wait_after_one_attempt(self):
+  current=self.publisher_missing();worker,checkpoint=self.resume(current)
+  with patch.object(worker,'archive_service_retry_at',side_effect=[None,1030],create=True), \
+       patch('pipeline.time.time',return_value=1000),patch.object(worker,'one',side_effect=TimeoutError('archive service unavailable')) as lookup, \
+       patch('pipeline.time.sleep') as sleep:
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  lookup.assert_called_once();sleep.assert_not_called()
+  self.assertEqual((result['status'],result['next_phase'],result['retry_at']),('queued','archive',1030))
+  self.assertEqual(result['_checkpoint']['completed_passes'],0)
+  self.assertEqual(sum(event['stage']=='archive_lookup' and event['status']=='error' for event in result['attempts']),1)
+
+ def test_archive_parse_failure_retries_preserved_body_and_not_completed_publisher(self):
+  current=self.publisher_missing();worker,checkpoint=self.resume(current)
+  snapshot='https://web.archive.org/web/20200102/https://publisher.example/story'
+  payload=json.dumps({'archived_snapshots':{'closest':{'available':True,'url':snapshot,'timestamp':'20200102'}}}).encode()
+  got={'status':'retrieved','attempts':[{'http_status':200}],'http_status':200,
+       'raw_uri':'gs://test/raw/archive-content','final_url':snapshot,'response_bytes':30,'stored_bytes':8}
+  from isolation import IsolationError
+  with patch.object(worker,'one',return_value=(200,{},payload,False)),patch.object(Fetcher,'fetch',return_value=got), \
+       patch.object(worker,'read',return_value=b'HTML preserved before parser failure'),patch('pipeline.extract',side_effect=IsolationError('parser process interrupted')):
+   queued=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  self.assertEqual(queued['next_phase'],'archive');self.assertNotIn(snapshot,queued['_checkpoint']['pipeline']['archive_seen'])
+  worker,checkpoint=self.resume(queued,self.worker('parser-retry'))
+  reused={**got,'reused':True,'response_bytes':0,'stored_bytes':0}
+  with patch.object(worker,'one') as lookup,patch.object(Fetcher,'fetch',return_value=reused) as fetch, \
+       patch.object(worker,'read',return_value=b'HTML preserved before parser failure'), \
+       patch('pipeline.extract',return_value={'quality':'candidate','text':'Article recovered from its preserved original body'}):
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  lookup.assert_not_called();fetch.assert_called_once();self.assertEqual(fetch.call_args.args[0]['url'],snapshot)
+  self.assertEqual(result['status'],'saved');self.assertEqual(sum(event['stage']=='http' for event in result['attempts']),1)
+
+ def legacy_archive_outage_retry(self,status='unavailable',http_status=404):
+  uri='gs://test/runs/run/claims/'+self.aid+'/old-archive/archive-lookups/'+self.aid+'-20200102.json'
+  snapshot='https://web.archive.org/web/20200102/https://publisher.example/story'
+  payload={'archived_snapshots':{'closest':{'available':True,'url':snapshot,'timestamp':'20200102'}}}
+  self.bucket.data[uri.removeprefix('gs://test/')]=json.dumps(payload)
+  events=[{'stage':'http','status':status,'url':self.item['url'],'raw_uri':'gs://test/raw/original-response',
+           'http_attempts':[{'http_status':http_status,'status':status}]},
+          {'stage':'publisher_url_discovery','status':'no_candidate'},
+          {'stage':'browser','status':'not_applicable'},
+          {'stage':'archive_lookup','status':'checked','timestamp':'20200102','lookup_uri':uri},
+          {'stage':'archive','status':'temporary_error','url':snapshot,'error':'Archive robots connection timeout'},
+          {'stage':'final','status':'deferred','extractor_version':EXTRACTOR_VERSION}]
+  return {'version':1,'kind':'phased-toolbox','article_id':self.aid,'run_id':'run','country':'KE',
+          'next_phase':'publisher','completed_passes':1,'attempts':events,'response_bytes':42,'stored_bytes':11,
+          'pipeline':None,'retry_best':None},snapshot,uri
+
+ def test_old_archive_outage_retry_migrates_without_publisher_request_or_double_counting(self):
+  for status,http_status in [('unavailable',404),('unavailable',410),('blocked',403)]:
+   with self.subTest(http_status=http_status):
+    checkpoint,snapshot,uri=self.legacy_archive_outage_retry(status,http_status);before=copy.deepcopy(checkpoint)
+    with patch.object(Fetcher,'fetch') as fetch,patch.object(self.pipeline,'one') as lookup:
+     queued=self.pipeline.fetch_phase(self.item,'run','KE',checkpoint=checkpoint)
+    fetch.assert_not_called();lookup.assert_not_called();self.assertEqual(checkpoint,before)
+    self.assertEqual((queued['status'],queued['next_phase']),('queued','archive'))
+    self.assertEqual((queued['response_bytes'],queued['stored_bytes']),(42,11))
+    self.assertEqual(queued['_checkpoint']['completed_passes'],1)
+    self.assertEqual((queued['_checkpoint']['response_bytes'],queued['_checkpoint']['stored_bytes']),(0,0))
+    worker,migrated=self.resume(queued,self.worker('legacy-service-wait'))
+    got={'status':'robots_unavailable','attempts':[],'service_retry_at':1030,'final_url':snapshot}
+    with patch('pipeline.time.time',return_value=1000),patch.object(worker,'one') as lookup, \
+         patch.object(Fetcher,'fetch',return_value=got):
+     waiting=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=migrated)
+    lookup.assert_not_called();self.assertEqual(waiting['_checkpoint']['completed_passes'],1)
+    cached=waiting['_checkpoint']['pipeline']['archive_lookups']['20200102']
+    self.assertEqual(cached['lookup_uri'],uri);self.assertTrue(cached['restored'])
+    worker,migrated=self.resume(waiting,self.worker('legacy-service-recovered'))
+    got={'status':'retrieved','attempts':[{'http_status':200}],'http_status':200,'raw_uri':'gs://test/raw/recovered',
+         'response_bytes':30,'stored_bytes':8,'final_url':snapshot}
+    with patch('pipeline.time.time',return_value=1030),patch.object(worker,'one') as lookup, \
+         patch.object(Fetcher,'fetch',return_value=got),patch.object(worker,'read',return_value=b'archived original'), \
+         patch('pipeline.extract',return_value={'quality':'candidate','text':'Complete original article from the archive'}):
+     result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=migrated)
+    lookup.assert_not_called();self.assertEqual(result['status'],'saved')
+    self.assertEqual(result['response_bytes'],72)
+    self.assertEqual(result['stored_bytes'],19+len(gzip.compress(b'Complete original article from the archive',mtime=0)))
+    self.assertEqual(sum(event['stage']=='http' for event in result['attempts']),1)
+    self.assertEqual(sum(event['stage']=='archive_lookup' for event in result['attempts']),1)
+
+ def test_old_retry_with_uncertain_publisher_or_browser_still_refreshes_publisher(self):
+  variants=[('temporary_error',None),('unavailable',None),('blocked',200)]
+  for status,http_status in variants:
+   with self.subTest(status=status,http_status=http_status):
+    checkpoint,_,_=self.legacy_archive_outage_retry(status,http_status)
+    with patch.object(Fetcher,'fetch',return_value=copy.deepcopy(self.missing)) as fetch,patch.object(self.pipeline,'one') as lookup:
+     result=self.pipeline.fetch_phase(self.item,'run','KE',checkpoint=checkpoint)
+    fetch.assert_called_once();lookup.assert_not_called();self.assertEqual(result['next_phase'],'archive')
+  checkpoint,_,_=self.legacy_archive_outage_retry();checkpoint['attempts'].insert(1,{'stage':'publisher_url_discovery','status':'temporary_error'})
+  with patch.object(Fetcher,'fetch',return_value=copy.deepcopy(self.missing)) as fetch:
+   self.pipeline.fetch_phase(self.item,'run','KE',checkpoint=checkpoint)
+  fetch.assert_called_once()
+
+ def test_operator_legacy_migration_is_pure_idempotent_and_rejects_foreign_identity(self):
+  checkpoint,_,_=self.legacy_archive_outage_retry();before=copy.deepcopy(checkpoint)
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(self.pipeline,'put') as put,patch.object(self.pipeline,'one') as lookup:
+   migrated=migrate_legacy_archive_retry(checkpoint,self.item,'run','KE')
+  fetch.assert_not_called();put.assert_not_called();lookup.assert_not_called()
+  self.assertEqual(checkpoint,before);self.assertEqual(migrated['next_phase'],'archive')
+  self.assertIsNone(migrate_legacy_archive_retry(migrated,self.item,'run','KE'))
+  for run,country,item in [('other','KE',self.item),('run','CL',self.item),('run','KE',{**self.item,'url':self.item['url']+'/other'})]:
+   self.assertIsNone(migrate_legacy_archive_retry(checkpoint,item,run,country))
 
  def test_browser_resumes_on_fresh_worker_without_repeating_http_or_canonical_discovery(self):
   got={**self.missing,'status':'retrieved','http_status':200,'raw_uri':'gs://test/raw/publisher','final_url':self.item['url']}

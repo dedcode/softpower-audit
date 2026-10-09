@@ -372,6 +372,7 @@ class FencingTests(unittest.TestCase):
         item = claim()
         run.queue.claim.side_effect = [[item]]
         saw_abort = threading.Event()
+        run.fetcher.close = Mock(side_effect=lambda: self.assertTrue(saw_abort.is_set()))
         def fetching(_):
             if run.fetcher.abort_event.wait(5):
                 saw_abort.set()
@@ -387,6 +388,7 @@ class FencingTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'status persistence unavailable'):
                 run.run()
         self.assertTrue(saw_abort.is_set())
+        run.fetcher.close.assert_called_once()
         run.queue.complete.assert_not_called()
         run.queue.release.assert_called_once_with(item)
 
@@ -436,6 +438,118 @@ class OutboxTests(unittest.TestCase):
         run.queue.mark_exported.assert_called_once_with([record])
         self.assertGreaterEqual(run.heartbeat.call_count, 2)
         run.queue.export_pending.assert_called_once_with(limit=500)
+
+    def test_background_export_does_not_race_claim_heartbeats(self):
+        run, record = self.prepare()
+        run.publication_guard = Mock(return_value=1)
+        run.last_heartbeat = 0
+        run.export_results(renew_claims=False)
+        run.heartbeat.assert_not_called()
+        self.assertEqual(run.publication_guard.call_count, 2)
+        run.queue.mark_exported.assert_called_once_with([record])
+
+    def test_background_load_cannot_acknowledge_after_handover(self):
+        run, _ = self.prepare()
+        run.publication_guard = Mock(side_effect=[1, None])
+        with self.assertRaisesRegex(RuntimeError, 'acknowledge exports without'):
+            run.export_results(renew_claims=False)
+        run.queue.mark_exported.assert_not_called()
+        run.bq.load_table_from_file.return_value.result.assert_called_once_with(timeout=90)
+
+    def test_background_export_requires_current_owner_before_loading(self):
+        run, _ = self.prepare()
+        run.publication_guard = Mock(return_value=None)
+        with self.assertRaisesRegex(RuntimeError, 'export without'):
+            run.export_results(renew_claims=False)
+        run.bq.load_table_from_file.assert_not_called()
+        run.queue.mark_exported.assert_not_called()
+
+    def test_slow_bigquery_load_does_not_stop_article_dispatch_or_commit(self):
+        run, record = self.prepare()
+        run.verification = False
+        run.task_count = 1
+        run.last_export = 0
+        run.lease_update = Mock()
+        run.publication_guard = Mock(return_value=1)
+        run.release_cohort_lease = Mock()
+        run.budget_reached = Mock(return_value=False)
+        run.dispatch_retry_seconds = None
+        processed = [0]
+        claimed = [0]
+        exported = [False]
+        load_started = threading.Event()
+        release_load = threading.Event()
+        second_fetched = threading.Event()
+        finished = threading.Event()
+        errors = []
+
+        def heartbeat(state):
+            run.worker_state = state
+            run.last_heartbeat = time.monotonic()
+        run.heartbeat.side_effect = heartbeat
+
+        def publish(*args):
+            snapshot = {'processed': processed[0], 'total': 2, 'response_bytes': 0, 'attempts': 0,
+                        'state': 'completed' if processed[0] == 2 else 'running', 'workers': []}
+            run.summary_snapshot = snapshot
+            run.last_publish = time.monotonic()
+            return snapshot
+        run.publish = publish
+
+        def claim_available():
+            if claimed[0] >= 2:
+                return []
+            item = claim()
+            item.article_id = 'fetch-' + str(claimed[0])
+            claimed[0] += 1
+            return [item]
+        run.claim_available = claim_available
+
+        def fetch(item):
+            if item.article_id == 'fetch-1':
+                second_fetched.set()
+            return {'status': 'saved'}
+        run.fetch_claim = fetch
+
+        def persist(item, result):
+            processed[0] += 1
+            run.forget_claim(item)
+            run.last_publish = 0
+        run.persist_result = persist
+        run.queue.export_pending.side_effect = lambda **kw: [] if exported[0] else [record]
+        run.queue.mark_exported.side_effect = lambda records: exported.__setitem__(0, True)
+
+        def load(**kwargs):
+            load_started.set()
+            if not release_load.wait(10):
+                raise RuntimeError('Test load was never released')
+        run.bq.load_table_from_file.return_value.result.side_effect = load
+
+        def collect():
+            try:
+                run.run()
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                finished.set()
+        with patch.object(distributed, 'memory_usage', return_value={}), patch.object(distributed.worker, 'STOP', False):
+            thread = threading.Thread(target=collect)
+            thread.start()
+            try:
+                self.assertTrue(load_started.wait(3), 'Background BQ load did not start')
+                self.assertTrue(second_fetched.wait(6), 'BQ load blocked the next article')
+                deadline = time.monotonic() + 2
+                while processed[0] != 2 and time.monotonic() < deadline:
+                    time.sleep(.01)
+                self.assertEqual(processed[0], 2)
+                self.assertFalse(finished.is_set(), 'Worker exited before its export was accepted')
+            finally:
+                release_load.set()
+                thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        run.bq.load_table_from_file.assert_called_once()
+        run.queue.mark_exported.assert_called_once_with([record])
 
     def test_prefetched_records_beyond_byte_limit_remain_unacknowledged(self):
         run, records, _ = self.prepare_many(12)

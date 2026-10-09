@@ -139,6 +139,36 @@ class DistributedPhasesTests(unittest.TestCase):
             run.claim_available()
             self.assertEqual(run.queue.claim.call_args.kwargs['limit'], 4)
 
+    def test_same_publisher_archive_backlog_can_fill_all_eight_archive_slots(self):
+        with patch.dict('os.environ', {'CRAWL_ARCHIVE_SLOTS': '8'}):
+            run = bare_run()
+            run.config['workers'] = 48
+            candidates = []
+            for index in range(8):
+                item = claim()
+                item.article_id = 'archive-' + str(index)
+                item.phase = 'archive'
+                candidates.append(item)
+            # Model the queue's per-outlet admission rule: all eight share the
+            # original publisher, while actual archive hosts have their own
+            # fenced network permits in the extraction pipeline.
+            def reserve(**kwargs):
+                if kwargs['phase'] != 'archive':
+                    return []
+                inflight = kwargs['inflight'].get('example.test', 0)
+                return candidates[:min(kwargs['limit'], max(0, kwargs['per_outlet'] - inflight))]
+            run.queue.claim.side_effect = reserve
+            selected = run.claim_available()
+            self.assertEqual(len(selected), 8)
+            calls = [call.kwargs for call in run.queue.claim.call_args_list]
+            self.assertEqual([(call['phase'], call['per_outlet']) for call in calls],
+                             [('publisher', 4), ('browser', 4), ('archive', 8)])
+            run.queue.claim.reset_mock()
+            for item in selected[:4]:
+                run.claims[item.article_id] = item
+            self.assertEqual(len(run.claim_available()), 4)
+            self.assertEqual(run.queue.claim.call_args.kwargs['limit'], 4)
+
     def test_browser_backlog_does_not_block_archive_admission(self):
         run = bare_run()
         run.config['workers'] = 48

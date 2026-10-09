@@ -12,7 +12,7 @@ class Bucket:
   data=self.data
   class Blob:
    def exists(self):return path in data
-   def download_as_text(self):return data[path]
+   def download_as_text(self,**kw):return data[path]
    def upload_from_string(self,value,**kw):data[path]=value
   return Blob()
 class RetryTests(unittest.TestCase):

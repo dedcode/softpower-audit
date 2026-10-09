@@ -352,7 +352,12 @@ class DistributedRun(Run):
                 continue
             admission = ({'admit': admit, 'prepare_admission': prepare_admission}
                          if phase == 'publisher' and not self.verification and callable(dispatch_availability) else {})
-            claims = self.queue.claim(limit=available, per_outlet=self.config.get('per_outlet_workers', 4),
+            # Archive retrieval contacts archive services, not the original
+            # publisher. Its global hostname permits still limit requests; the
+            # publisher's per-outlet article cap must not halve an archive pool
+            # simply because the remaining URLs belong to the same newspaper.
+            per_outlet = archive_limit if phase == 'archive' else self.config.get('per_outlet_workers', 4)
+            claims = self.queue.claim(limit=available, per_outlet=per_outlet,
                                       inflight=Counter(claim.item['outlet'] for claim in phase_claims), phase=phase,
                                       **admission)
             selected.extend(claims)
@@ -515,7 +520,7 @@ class DistributedRun(Run):
             raise RuntimeError('Article completion rejected because claim ownership expired or changed')
         self.forget_claim(claim)
 
-    def export_results(self):
+    def export_results(self, *, renew_claims=True):
         records = self.queue.export_pending(limit=500)
         if not records:
             self.last_export = time.monotonic()
@@ -540,7 +545,7 @@ class DistributedRun(Run):
         with ThreadPoolExecutor(max_workers=8) as pool:
             full = False
             for offset in range(0, len(records), 8):
-                if time.monotonic() - self.last_heartbeat >= 20:
+                if renew_claims and time.monotonic() - self.last_heartbeat >= 20:
                     self.heartbeat(self.worker_state)
                 chunk = records[offset:offset + 8]
                 for record, encoded in zip(chunk, pool.map(read_record, chunk)):
@@ -552,12 +557,21 @@ class DistributedRun(Run):
                 if full:
                     break
         if accepted:
-            self.heartbeat(self.worker_state)
+            if renew_claims:
+                self.heartbeat(self.worker_state)
+            elif self.publication_guard() is None:
+                raise RuntimeError('Cannot export without collection publication ownership')
             config = bigquery.LoadJobConfig(ignore_unknown_values=True, source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON)
             self.bq.load_table_from_file(io.BytesIO(batch.data()), self.config['dataset'] + '.crawl_result_events',
                                         job_config=config).result(timeout=90)
+            # A background load can outlast a handover. Its immutable BQ events
+            # are harmless duplicates, but only the current cohort acknowledges
+            # the durable outbox. The main loop remains the sole claim renewer.
+            if not renew_claims and self.publication_guard() is None:
+                raise RuntimeError('Cannot acknowledge exports without collection publication ownership')
             self.queue.mark_exported(accepted)
-            self.heartbeat(self.worker_state)
+            if renew_claims:
+                self.heartbeat(self.worker_state)
         self.last_export = time.monotonic()
 
     def release_cohort_lease(self, summary):
@@ -599,6 +613,7 @@ class DistributedRun(Run):
         failure = None
         next_refill = 0
         refill_delay = 3
+        export_future = None
         rotation = float(os.environ.get('CRAWL_ROTATE_SECONDS', '518400'))
         if not 0 < rotation < float('inf'):
             raise ValueError('CRAWL_ROTATE_SECONDS must be positive and finite')
@@ -620,11 +635,16 @@ class DistributedRun(Run):
                         raise TimeoutError('Verification peers did not start')
                     self.heartbeat('starting')
                     time.sleep(5)
-            with ThreadPoolExecutor(max_workers=self.config['workers']) as pool:
+            with ThreadPoolExecutor(max_workers=self.config['workers']) as pool, ThreadPoolExecutor(max_workers=1) as exporter:
                 # Catch while still inside the executor: abort request admissions
                 # before __exit__ waits for outstanding article futures to drain.
                 try:
                     while True:
+                        if export_future is not None and export_future.done():
+                            # Surface failed loads immediately: evidence/outbox
+                            # stay durable and the native retry can export them.
+                            export_future.result()
+                            export_future = None
                         if time.monotonic() - self.last_heartbeat >= 20:
                             self.heartbeat(state)
                         if time.monotonic() - self.last_publish >= 30:
@@ -689,8 +709,18 @@ class DistributedRun(Run):
                         if finished:
                             refill_delay = 3
                             next_refill = min(next_refill, time.monotonic() + 3)
-                        if self.task_index == '0' and time.monotonic() - self.last_export >= 60:
-                            self.export_results()
+                        if (self.task_index == '0' and export_future is None
+                                and time.monotonic() - self.last_export >= 60):
+                            # BQ may take ninety seconds, plus GCS evidence reads.
+                            # It must not stop publisher/recovery dispatch, claim
+                            # persistence, or the twenty-second ownership renewal.
+                            export_future = exporter.submit(self.export_results, renew_claims=False)
+                    while export_future is not None and not export_future.done():
+                        if time.monotonic() - self.last_heartbeat >= 20:
+                            self.heartbeat('exporting')
+                        wait([export_future], timeout=1)
+                    if export_future is not None:
+                        export_future.result()
                 except BaseException:
                     self.fetcher.abort_event.set()
                     raise
@@ -750,3 +780,8 @@ class DistributedRun(Run):
             except Exception:
                 pass
             raise
+        finally:
+            # Both executors have drained before this closes their thread-local
+            # connection pools, including failure, handover and memory recycle.
+            close=getattr(self.fetcher,'close',None)
+            if callable(close):close()

@@ -109,7 +109,7 @@ class HostQueueTests(unittest.TestCase):
             return {'status': 'unavailable', 'attempts': [], 'http_status': 404, 'raw_uri': None}
 
         with patch.object(Fetcher, 'fetch', side_effect=retrieve), patch.object(self.fetcher, 'one', return_value=(200, {}, b'{"archived_snapshots":{}}', False)) as archive:
-            result = self.fetcher.fetch(self.item, 'run', 'KE')
+            result = self.fetcher.fetch({**self.item, 'first_observed': '2020-01-02'}, 'run', 'KE')
         self.assertEqual(archive.call_count, 2)
         self.assertEqual(result['status'], 'exhausted')
         self.assertFalse(any(event.get('reason') == 'Per-URL time budget' for event in result['attempts']))

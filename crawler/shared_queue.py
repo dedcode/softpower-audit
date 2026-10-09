@@ -265,6 +265,9 @@ class SharedQueue:
         read advisory host availability for a page; ``admit(item)`` then leaves
         unavailable work untouched in the queue. These callbacks never replace
         the fenced article transaction or the network request's host admission.
+        Eligible articles share a bounded transaction: a single bulk read checks
+        control and live article versions before any leases are written. This
+        avoids one serial control read, article read and commit per article.
         """
         due_field = _due_field(phase)
         if not 0 <= limit <= MAX_CLAIMS or per_outlet < 1:
@@ -303,39 +306,91 @@ class SharedQueue:
                 prepare_admission([doc['item'] for candidate in candidates
                                    if (doc := candidate.to_dict()).get('outlet') not in excluded
                                    and active[doc.get('outlet')] < per_outlet])
+            pending = []
+            pending_outlets = Counter()
+
+            def reserve_pending():
+                if not pending:
+                    return
+                batch = self._claim_batch(pending, phase, active, per_outlet)
+                claims.extend(batch)
+                active.update(claim.item['outlet'] for claim in batch)
+                pending.clear()
+                pending_outlets.clear()
+
             for candidate in candidates:
                 doc = candidate.to_dict()
                 outlet = doc.get('outlet')
                 if outlet in excluded or active[outlet] >= per_outlet:
                     continue
-                if admit is not None and not admit(doc['item']):
-                    continue
-                token = uuid.uuid4().hex
-                def reserve(transaction):
-                    live_control = self.run_ref.get(transaction=transaction).to_dict()
-                    live = candidate.reference.get(transaction=transaction)
-                    if live_control.get('stop') or live_control.get('state') not in ACTIVE_RUN_STATES:
-                        return None
-                    if not live.exists:
-                        return None
-                    row = live.to_dict()
-                    admitted_at = self.clock()
-                    if (row.get('state') == 'done' or row.get('phase', 'publisher') != phase
-                            or row.get(due_field, float('inf')) > admitted_at):
-                        return None
-                    if row.get('state') not in ('ready', 'leased'):
-                        raise RuntimeError('Unexpected article queue state')
-                    expires = admitted_at + self.lease_seconds
-                    transaction.update(candidate.reference, {'state': 'leased', 'owner': self.owner,
-                        'claim_token': token, due_field: expires, 'phase': phase, 'updated_at': admitted_at})
-                    return Claim(row['article_id'], token, row['item'], expires, phase, row.get('checkpoint_uri'))
-                claimed = self._transaction(reserve)
-                if claimed is not None:
-                    claims.append(claimed)
-                    active[outlet] += 1
+                if active[outlet] + pending_outlets[outlet] >= per_outlet:
+                    # A rejected/stale candidate must not consume outlet
+                    # capacity. Settle the pending batch before deciding
+                    # whether this next article from the same outlet can fit.
+                    reserve_pending()
                     if len(claims) == limit:
                         return claims
+                    if active[outlet] >= per_outlet:
+                        continue
+                if admit is not None and not admit(doc['item']):
+                    continue
+                pending.append((candidate.reference, uuid.uuid4().hex))
+                pending_outlets[outlet] += 1
+                if len(pending) == limit - len(claims):
+                    reserve_pending()
+                    if len(claims) == limit:
+                        return claims
+            reserve_pending()
+            if len(claims) == limit:
+                return claims
         return claims
+
+    def _claim_batch(self, candidates, phase, active, per_outlet):
+        """Read and lease at most 48 candidates in one fenced transaction."""
+        if not candidates:
+            return []
+        if len(candidates) > MAX_CLAIMS:
+            raise ValueError('A claim batch may contain at most 48 articles')
+        due_field = _due_field(phase)
+        references = [self.run_ref, *(reference for reference, _ in candidates)]
+
+        def reserve(transaction):
+            # BatchGetDocuments may return snapshots in any order. Resolve by
+            # the complete reference path because a run ID can equal an ID in
+            # its article collection. All reads precede all transaction writes.
+            snapshots = {snapshot.reference.path: snapshot for snapshot in
+                         self.client.get_all(references, transaction=transaction)}
+            control = snapshots.get(self.run_ref.path)
+            if not control or not control.exists:
+                raise RuntimeError('Shared crawl queue has not been initialized')
+            live_control = control.to_dict()
+            if live_control.get('stop') or live_control.get('state') not in ACTIVE_RUN_STATES:
+                return []
+            capacity = Counter(active)
+            admitted_at = self.clock()
+            expires = admitted_at + self.lease_seconds
+            claimed = []
+            for reference, token in candidates:
+                live = snapshots.get(reference.path)
+                if not live or not live.exists:
+                    continue
+                row = live.to_dict()
+                if (row.get('state') == 'done' or row.get('phase', 'publisher') != phase
+                        or row.get(due_field, float('inf')) > admitted_at):
+                    continue
+                if row.get('state') not in ('ready', 'leased'):
+                    raise RuntimeError('Unexpected article queue state')
+                outlet = row['outlet']
+                if capacity[outlet] >= per_outlet:
+                    continue
+                transaction.update(reference, {'state': 'leased', 'owner': self.owner,
+                    'claim_token': token, due_field: expires, 'phase': phase, 'updated_at': admitted_at})
+                claimed.append(Claim(row['article_id'], token, row['item'], expires,
+                                     phase, row.get('checkpoint_uri')))
+                capacity[outlet] += 1
+            return claimed
+
+        return self._transaction(reserve)
 
     def heartbeat(self, claims, worker_state=None):
         """Renew owned, still-live claims atomically; return lost article IDs."""

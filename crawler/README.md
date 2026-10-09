@@ -1007,7 +1007,7 @@ used a five-second initial delay and three-second minimum; the continued
 configuration below is more conservative. The recorded robots delay remains
 available for disabling the opt-in policy.
 
-Example of the continued one-host policy:
+Historical r17 policy (superseded by r18 below):
 
 ```json
 {
@@ -1044,11 +1044,11 @@ were checked. These counts include work completed around the trial and are not
 is a short trial result, not a promised completion rate or proportional scaling
 claim. Evidence is under `distributed/adaptive-r17/` in the existing private run.
 
-Continued collection uses a more conservative policy: initially 10 seconds,
+The first continued collection used a more conservative policy: initially 10 seconds,
 a five-second minimum and one simultaneous publisher request. Archive recovery
 keeps its separate existing slots. This avoids retesting the three-second floor
-that produced the rate limit. Healthy windows can gradually reduce the delay;
-rate limits, slow responses and failures still increase it. It keeps the same
+that produced the rate limit. Healthy windows could gradually reduce the delay;
+rate limits, slow responses and failures increased it. It kept the same
 image and single-worker CPU/memory allocation, with no finite adaptive request
 cap and no reset of the article queue.
 
@@ -1062,3 +1062,102 @@ full-text recovery rate. The public status API returned current running progress
 with one active instance. Reservation, launch and verification evidence is under
 `distributed/adaptive-continuous-20261009/`. Runtime code is commit `0595072`;
 image digest is `sha256:d351988cef7dcfaf425c0294af1638a22699473378a62ebff9cb0b6367bb3d5b`.
+
+### Faster dispatch and bounded recovery (r18, 2026-10-09)
+
+The r17 continuous controller eventually reached a 120-second request interval
+despite only 31 transport failures and seven HTTP 429 responses among 2,917
+recorded responses. Recovering through twenty-response windows at that interval
+took about forty minutes per window. The r18 changes remove that lasting delay
+and avoid serial database work before article threads can start. The collection
+retains one Cloud Run task, 48 article slots and the existing CPU/memory
+allocation, full input queue, ownership fences and archive/browser recovery.
+
+`SharedQueue.claim` checks run control and up to 48 live article versions in one
+transactional bulk read, then writes the accepted leases atomically. It retains
+fresh claim tokens, due-date and phase checks, per-outlet capacity and bounded
+pagination. A peer claim or operator stop invalidates the transaction's live
+read conditions; it cannot produce duplicate current ownership. In a local
+30 ms database-call latency model, an eight-article refill fell from 0.879 to
+0.138 seconds. This measures queue overhead, not publisher or full-text recovery
+throughput. The BigQuery outbox exporter also runs separately from dispatch and
+heartbeats, while HTTP threads reuse their own connections.
+
+For continuous adaptive policies (`requests: null`), HTTP 429 creates a shared
+pause of at least 60 seconds. Repeated timeouts or an unhealthy server-response
+window create a pause of at least 30 seconds. Once the pause expires, the host
+allows one probe at the configured initial interval, which must be at most ten
+seconds. Three fast HTTP 200/404/410 responses restore the last healthy interval
+and normal host capacity. Missing pages remain missing extraction outcomes;
+they demonstrate serving capacity without counting as saved article text.
+
+A failed recovery probe extends the next default pause, up to 300 seconds.
+An explicit longer `Retry-After` remains in force; the 300-second bound never
+shortens it. Responses from requests already in flight during a pause do not
+pass the recovery probe. HTTP 401/403 responses and positively identified
+TLS/DNS failures remain recorded but neither pass nor reset healthy probes.
+Other transport failures retain the cautious pause/probe behavior. Finite
+experiments keep their existing request budgets, backoffs and fallback rules.
+Response feedback remains fenced and deduplicated across restarts.
+
+The intended one-host production settings are `initial_delay: 2`,
+`min_delay: 2`, `max_delay: 20`, `max_concurrency: 2`, `window: 20` and
+`healthy_seconds: 5`, with `requests: null` and a fresh policy ID. Other hosts
+retain their existing limits. Apply the policy through the normal atomic
+handover; do not overlap the retired and replacement executions or reseed the
+queue. The controller's default cooldown bound is separate from `max_delay`,
+which bounds request spacing.
+
+Regression checks cover shared cooldowns, a 600-second `Retry-After`, expired
+owner fencing, single-slot probes, repeated failed probes, neutral denials,
+transport diagnostics and the unchanged finite-pilot behavior. A synthetic
+trace matching all 2,917 observed HTTP/transport outcome counts finishes without
+ratcheting request spacing above two seconds. Its event order is synthetic;
+it is not an estimate of the remaining corpus's completion time.
+
+The stopped handover moved 1,257 strictly recognized old publisher retries to
+archive recovery. Their prior publisher responses were definitive 401/403/404/410
+outcomes followed by archive outages; all original evidence and cumulative
+metrics remain. `scripts/crawl_queue_migration.py` accepts at most 48 prepared
+immutable replacements per transaction and requires the exact owned STOP
+reason, independently verified terminated execution and guard reservation.
+Changed checkpoints or foreign owners are skipped. It preserves future retry
+dates, removes retired claim tokens and increments only the archive phase
+counter; processed, saved, total and budget counters do not change.
+
+Archive outages now retain their phase checkpoint, availability payloads and
+original lookup artifacts. They neither consume an article retry pass nor
+restart completed publisher/browser work. Failed robots retrievals have a
+short negative cache and shared cooldown, without granting access permission.
+Archive work can use its full eight configured article slots even when all
+remaining URLs belong to one original publisher.
+
+### Rate-limited URLs yield their slots (r20, 2026-10-09)
+
+A publisher HTTP 429 now returns after its first preserved response instead
+of sleeping and retrying that URL inside its article thread. The shared host
+pause still applies, and the existing durable recovery/retry phases retain the
+unfinished work. This allows other URLs to test host recovery after the pause.
+HTTP 500/503 and transport retries retain their existing behavior. A temporary
+publisher robots-policy failure is also unfinished, including failures on
+discovered URLs; permanent robots disallow stays distinct and is never bypassed.
+The final combined suite passes 430 tests, including real TCP connection reuse
+and the configured Chromium fallback.
+
+The first r18 live check did **not** establish a full-text speed improvement:
+saved texts remained at 60,893. Independent cloud probes reproduced TCP
+timeouts/refusals to `web.archive.org:443` before TLS or an HTTP response.
+Archive.org metadata and publisher requests remained reachable. Both HTTP and
+HTTPS publisher robots succeeded at other times; HTTPS robots and an HTTPS
+article also returned 429. Thus scheme changes, parser changes and more CPU
+alone do not resolve the observed connectivity and rate-limit failures.
+These are diagnostic observations, not proof of a permanent provider block.
+
+The deployed final image is
+`sha256:4e3989b3e5e4891e501137e106aa455bfd45facef23021a4358bc3f6e0b0bdf0`
+from Cloud Build `46351479-3459-4103-a75d-a61c8aeb80fc`. The uploaded source bytes
+were checked against the tested working files. It keeps one task, 48 article
+slots, the existing four-CPU/four-GiB allocation and the full 85,993-URL input.
+Private handover, deployment and connectivity evidence is under
+`distributed/speed-r18/` and `distributed/speed-r20/`; no successful throughput
+claim should be made until new text objects and a live measurement support it.

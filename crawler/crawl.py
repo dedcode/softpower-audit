@@ -5,11 +5,15 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit,urljoin
 from urllib.robotparser import RobotFileParser
 import requests
+from urllib3 import exceptions as urllib3_exceptions
 from contextlib import contextmanager
 
 AGENT='ChinaNewsResearchBot'
 UA=AGENT+'/1.0 (+https://djelleldifallah.com/softpower-audit/extraction-status/)'
 MAX_BODY=5*1024*1024
+ARCHIVE_HOSTS=frozenset(('archive.org','web.archive.org'))
+SERVICE_RETRY_SECONDS=30.
+MAX_SESSION_THREADS=64
 
 def now():return datetime.now(timezone.utc).isoformat()
 def key(url):return hashlib.sha256(url.encode()).hexdigest()
@@ -26,11 +30,29 @@ def retry_seconds(value,attempt):
         try:return max(5,(parsedate_to_datetime(value)-datetime.now(timezone.utc)).total_seconds())
         except Exception:return min(120,10*2**(attempt-1))
 
+def transport_kind(error):
+    # Requests/urllib3 may wrap certificate/DNS faults through several exception
+    # layers. Classify actual exception types, never match arbitrary messages.
+    pending=[error];seen=set()
+    while pending and len(seen)<16:
+        current=pending.pop()
+        if id(current) in seen:continue
+        seen.add(id(current))
+        if isinstance(current,requests.exceptions.SSLError):return 'tls'
+        dns_error=getattr(urllib3_exceptions,'NameResolutionError',None)
+        if isinstance(current,socket.gaierror) or (dns_error is not None and isinstance(current,dns_error)):return 'dns'
+        pending.extend(value for value in (getattr(current,'__cause__',None),getattr(current,'__context__',None),getattr(current,'reason',None),*current.args)
+                       if isinstance(value,BaseException))
+    return None
+
 class HostCooldown(requests.RequestException):
     """A server-requested pause is longer than an individual bounded wait."""
     def __init__(self,host,seconds):
         self.retry_after_seconds=seconds
         super().__init__(f'{host} is cooling down; retry after {seconds:.0f} seconds')
+
+class RobotsUnavailable(requests.RequestException):
+    """A cached temporary robots failure never permits an article request."""
 
 class Fetcher:
     parse_initial=True
@@ -39,6 +61,8 @@ class Fetcher:
         self.bucket=bucket;self.run_id=run_id;self.delay=delay;self.max_attempts=max_attempts
         self.lock=threading.Lock();self.hostlocks={};self.last={};self.robots={};self.queue_wait=threading.local();self.cooldowns={}
         self.robots_delays={}
+        self.robots_failures={}
+        self.session_local=threading.local();self.session_lock=threading.Lock();self.sessions={};self.sessions_closed=False
         self.network={'http_in_flight':0,'http_started':0,'http_completed':0,'http_errors':0,
                       'http_seconds':0.,'host_waiters':0,'host_wait_seconds':0.}
         self.host_coordinator=host_coordinator;self.shared_leases=threading.local()
@@ -57,6 +81,45 @@ class Fetcher:
             raise ValueError('Adaptive crawling requires the shared host coordinator')
     def network_snapshot(self):
         with self.lock:return dict(self.network)
+    def session(self):
+        # Requests sessions are thread-confined. Reusing their bounded adapter
+        # pools avoids a new TCP/TLS connection for every robots/article fetch.
+        with self.session_lock:
+            if self.sessions_closed:raise RuntimeError('Fetcher sessions are closed')
+            cached=getattr(self.session_local,'value',None)
+            if cached is not None:return cached
+            for thread,session in list(self.sessions.items()):
+                if not thread.is_alive():
+                    close=getattr(session,'close',None)
+                    if callable(close):close()
+                    del self.sessions[thread]
+            if len(self.sessions)>=MAX_SESSION_THREADS:raise RuntimeError('HTTP session thread capacity exceeded')
+            session=requests.Session();session.trust_env=False
+            self.sessions[threading.current_thread()]=session;self.session_local.value=session
+            return session
+    def close(self):
+        # Call only after every article/browser future has drained.
+        with self.session_lock:
+            if self.sessions_closed:return
+            self.sessions_closed=True;sessions=list(self.sessions.values());self.sessions.clear()
+        for session in sessions:
+            close=getattr(session,'close',None)
+            if callable(close):close()
+    def archive_service_retry_at(self,url):
+        # Fast local-only admission hint: no DNS, Firestore, or HTTP. A shared
+        # cooldown encountered by host_slot is mirrored here for later articles.
+        p=urlsplit(url);host=(p.hostname or '').lower().rstrip('.')
+        if host not in ARCHIVE_HOSTS:return None
+        origin=p.scheme+'://'+p.netloc;clock=time.monotonic()
+        with self.lock:
+            failure=self.robots_failures.get(origin,{})
+            remaining=max(self.cooldowns.get(host,0)-clock,failure.get('expires_at',0)-clock)
+        return time.time()+remaining if remaining>0 else None
+    def pause_archive_service(self,host,seconds=SERVICE_RETRY_SECONDS):
+        if host not in ARCHIVE_HOSTS:return
+        self.check_running();seconds=max(0.,float(seconds))
+        if self.host_coordinator is not None:self.host_coordinator.defer(host,seconds)
+        with self.lock:self.cooldowns[host]=max(self.cooldowns.get(host,0),time.monotonic()+seconds)
     def dispatch_availability(self,hosts):
         if self.host_coordinator is None:return None
         with self.lock:delays={host:self.robots_delays[host] for host in hosts if host in self.robots_delays}
@@ -125,8 +188,20 @@ class Fetcher:
             self.check_running()
             with self.lock:robots_delay=self.robots_delays.get(host)
             with self.network_wait():
-                lease=self.host_coordinator.acquire(host,max(self.delay,delay or 0),
-                    cancelled=self.abort_event.is_set,guard=self.request_guard(),robots_delay=robots_delay)
+                if host in ARCHIVE_HOSTS:
+                    # Return service pauses to the durable queue rather than
+                    # filling archive slots with thirty-second cooldown sleeps.
+                    while True:
+                        lease,state=self.host_coordinator.try_acquire(host,max(self.delay,delay or 0),
+                            cancelled=self.abort_event.is_set,guard=self.request_guard(),robots_delay=robots_delay)
+                        if lease is not None:break
+                        if state.cooldown_seconds>0:
+                            with self.lock:self.cooldowns[host]=max(self.cooldowns.get(host,0),time.monotonic()+state.cooldown_seconds)
+                            raise HostCooldown(host,state.cooldown_seconds)
+                        self.host_coordinator.sleep(min(self.host_coordinator.poll_seconds,max(.05,state.wait_seconds)))
+                else:
+                    lease=self.host_coordinator.acquire(host,max(self.delay,delay or 0),
+                        cancelled=self.abort_event.is_set,guard=self.request_guard(),robots_delay=robots_delay)
             if not hasattr(self.shared_leases,'active'):self.shared_leases.active={}
             with lease:
                 self.shared_leases.active[host]=lease
@@ -181,25 +256,31 @@ class Fetcher:
             with self.queued_wait():time.sleep(remaining)
     def one(self,url,delay=None):
         self.check_running()
-        p=public_url(url)
+        retry_at=self.archive_service_retry_at(url)
+        if retry_at is not None:raise HostCooldown(urlsplit(url).hostname,max(0,retry_at-time.time()))
+        try:p=public_url(url)
+        except (requests.RequestException,socket.gaierror,TimeoutError):
+            self.pause_archive_service(urlsplit(url).hostname);raise
         with self.host_slot(p.hostname,delay):
             self.check_running()
-            started=time.monotonic();completed=False;status=None
+            started=time.monotonic();completed=False;status=None;failure_kind=None
             with self.lock:
                 self.network['http_started']+=1;self.network['http_in_flight']+=1
             try:
-                with requests.Session() as s:
-                    s.trust_env=False
-                    with s.get(url,headers={'User-Agent':UA,'Accept':'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'},timeout=(10,25),allow_redirects=False,stream=True) as r:
-                        status=r.status_code
-                        if r.status_code in (429,503) or (r.status_code in (401,403) and r.headers.get('Retry-After')):
-                            self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
-                        data=bytearray();oversize=False;began=time.monotonic()
-                        for chunk in r.iter_content(65536):
-                            data.extend(chunk)
-                            if len(data)>MAX_BODY or time.monotonic()-began>40:oversize=True;break
-                        completed=True
-                        return r.status_code,requests.structures.CaseInsensitiveDict(r.headers),bytes(data[:MAX_BODY]),oversize
+                s=self.session()
+                with s.get(url,headers={'User-Agent':UA,'Accept':'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'},timeout=(10,25),allow_redirects=False,stream=True) as r:
+                    status=r.status_code
+                    if r.status_code in (429,503) or (r.status_code in (401,403) and r.headers.get('Retry-After')):
+                        self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
+                    data=bytearray();oversize=False;began=time.monotonic()
+                    for chunk in r.iter_content(65536):
+                        data.extend(chunk)
+                        if len(data)>MAX_BODY or time.monotonic()-began>40:oversize=True;break
+                    completed=True
+                    return r.status_code,requests.structures.CaseInsensitiveDict(r.headers),bytes(data[:MAX_BODY]),oversize
+            except (requests.RequestException,socket.gaierror,TimeoutError) as exc:
+                failure_kind=transport_kind(exc)
+                self.pause_archive_service(p.hostname);raise
             finally:
                 duration=max(0.,time.monotonic()-started)
                 with self.lock:
@@ -208,17 +289,31 @@ class Fetcher:
                     self.network['http_seconds']+=duration
                 lease=getattr(self.shared_leases,'active',{}).get(p.hostname)
                 observe=getattr(lease,'observe',None)
-                if callable(observe):observe(status,duration,transport_error=not completed)
+                if callable(observe):
+                    details={'transport_kind':failure_kind} if failure_kind is not None else {}
+                    observe(status,duration,transport_error=not completed,**details)
     def policy(self,url):
         p=public_url(url);origin=p.scheme+'://'+p.netloc
         with self.queued_host_lock('robots:'+origin):
             if origin in self.robots:return self.robots[origin]
+            failure=self.robots_failures.get(origin)
+            if failure is not None:
+                if failure['expires_at']>time.monotonic():
+                    if failure.get('error'):raise RobotsUnavailable(failure['error'])
+                    return failure['result']
+                with self.lock:self.robots_failures.pop(origin,None)
             robot_url=origin+'/robots.txt';original=robot_url
-            for _ in range(4):
-                code,headers,body,large=self.one(robot_url)
-                if code in (301,302,303,307,308) and headers.get('Location'):
-                    robot_url=urljoin(robot_url,headers['Location']);continue
-                break
+            try:
+                for _ in range(4):
+                    code,headers,body,large=self.one(robot_url)
+                    if code in (301,302,303,307,308) and headers.get('Location'):
+                        robot_url=urljoin(robot_url,headers['Location']);continue
+                    break
+            except (requests.RequestException,socket.gaierror,TimeoutError) as exc:
+                error=type(exc).__name__+': '+str(exc)[:250]
+                with self.lock:self.robots_failures[origin]={'expires_at':time.monotonic()+SERVICE_RETRY_SECONDS,'error':error}
+                self.pause_archive_service(p.hostname)
+                raise RobotsUnavailable(error) from exc
             uri=self.put('runs/'+self.run_id+'/robots/'+key(origin)+'.json',json.dumps({'url':original,'final_url':robot_url,'status':code,'checked_at':now(),'body':body.decode('utf-8','replace')[:1000000]}),'application/json')
             actual_delay=None
             if code in (404,410):result=(None,True,self.delay,uri);actual_delay=0.
@@ -232,7 +327,11 @@ class Fetcher:
                 result=(parser,True,delay,uri)
             if actual_delay is not None:
                 with self.lock:self.robots_delays[p.hostname]=max(actual_delay,self.robots_delays.get(p.hostname,0))
-            self.robots[origin]=result;return result
+            if result[1]:self.robots[origin]=result
+            else:
+                with self.lock:self.robots_failures[origin]={'expires_at':time.monotonic()+SERVICE_RETRY_SECONDS,'result':result}
+                self.pause_archive_service(p.hostname)
+            return result
     def fetch(self,item,run,country):
         url=item['url'];article_id=key(url)
         result={**item,'article_id':article_id,'run_id':run,'country':country,'updated_at':now(),
@@ -246,9 +345,14 @@ class Fetcher:
                     result[field]=previous.get(field)
                 result.update(status=previous['status'],reused=True);return result
         for attempt in range(1,self.max_attempts+1):
-            event={'attempt':attempt,'started_at':now()};current=url
+            event={'attempt':attempt,'started_at':now()};current=url;headers={}
             try:
                 for redirect in range(6):
+                    retry_at=self.archive_service_retry_at(current)
+                    if retry_at is not None:
+                        result.update(status='robots_unavailable' if self.robots_failures.get(urlsplit(current).scheme+'://'+urlsplit(current).netloc) else 'temporary_error',
+                            service_retry_at=retry_at,error='Archive service temporarily unavailable')
+                        event.update(status=result['status'],url=current);break
                     parser,allowed,delay,robots_uri=self.policy(current);result['robots_uri']=robots_uri
                     if not allowed or (parser and not parser.can_fetch(AGENT,current)):
                         result['status']='robots_denied' if allowed else 'robots_unavailable';event.update(status=result['status'],url=current);break
@@ -263,8 +367,10 @@ class Fetcher:
                     if code in (301,302,303,307,308) and headers.get('Location'):
                         current=urljoin(current,headers['Location']);continue
                     content_type=headers.get('Content-Type','').lower()
-                    if large:result['status']='needs_inspection';result['error']='Response exceeded size/time limit; stored body is partial'
-                    elif code==429:result['status']='rate_limited'
+                    if code==429:
+                        result['status']='rate_limited'
+                        if large:result['error']='Response exceeded size/time limit; stored body is partial'
+                    elif large:result['status']='needs_inspection';result['error']='Response exceeded size/time limit; stored body is partial'
                     elif code in (401,403):result['status']='blocked'
                     elif code in (404,410):result['status']='unavailable'
                     elif code>=500:result['status']='temporary_error'
@@ -295,10 +401,23 @@ class Fetcher:
                 retry=result['status'] in ('rate_limited','temporary_error')
                 wait=retry_seconds(headers.get('Retry-After'),attempt) if retry else 0
             except (requests.RequestException,socket.gaierror,TimeoutError) as e:
-                result.update(status='temporary_error',error=type(e).__name__+': '+str(e)[:250]);event['status']=result['status'];retry=True;wait=getattr(e,'retry_after_seconds',retry_seconds(None,attempt))
+                result.update(status='robots_unavailable' if isinstance(e,RobotsUnavailable) and urlsplit(current).hostname in ARCHIVE_HOSTS else 'temporary_error',error=type(e).__name__+': '+str(e)[:250]);event['status']=result['status'];retry=True;wait=getattr(e,'retry_after_seconds',retry_seconds(None,attempt))
             except ValueError as e:
                 result.update(status='needs_inspection',error=str(e));event['status']=result['status'];retry=False;wait=0
             event['finished_at']=now();result['attempts'].append(event)
+            if urlsplit(current).hostname in ARCHIVE_HOSTS and result['status'] in ('robots_unavailable','temporary_error','rate_limited'):
+                retry_at=self.archive_service_retry_at(current)
+                if retry_at is None:
+                    self.pause_archive_service(urlsplit(current).hostname,max(SERVICE_RETRY_SECONDS,wait))
+                    retry_at=self.archive_service_retry_at(current)
+                result['service_retry_at']=retry_at;result['retry_after_seconds']=max(0.,retry_at-time.time())
+                break
+            if result['status']=='rate_limited':
+                # Return the preserved response to durable archive/retry phases.
+                # Sleeping here would reserve a publisher slot and re-request
+                # this same denied URL as the host's next recovery probe.
+                event['retry_after_seconds']=wait;result['retry_after_seconds']=wait
+                break
             if retry and attempt<self.max_attempts and wait<=120:
                 event['retry_after_seconds']=wait;time.sleep(wait);continue
             if retry:

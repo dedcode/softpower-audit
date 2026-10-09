@@ -311,6 +311,88 @@ class SharedQueueTests(unittest.TestCase):
         self.assertEqual(len(set(identities)), 192)
         self.assertTrue(all(len(batch) == 48 for batch in batches))
 
+    def test_full_refill_reads_control_and_articles_in_one_bounded_transaction(self):
+        self.seed([article(i, f'outlet-{i}.ke') for i in range(100)])
+        reads = []
+        original = self.database.get_all
+        def capture(references, **kwargs):
+            references = list(references)
+            self.assertIn('transaction', kwargs)
+            # No read-after-write transactions, even when the SDK returns
+            # documents in the reverse of the requested order.
+            self.assertEqual(kwargs['transaction'].operations, [])
+            reads.append([reference.path for reference in references])
+            return original(references, **kwargs)
+        with patch.object(self.database, 'get_all', capture):
+            claims = self.queue.claim(48)
+        self.assertEqual(len(claims), 48)
+        self.assertEqual(len(reads), 1)
+        self.assertEqual(len(reads[0]), 49)
+        self.assertIn(self.queue.run_ref.path, reads[0])
+        self.assertEqual(len({claim.token for claim in claims}), 48)
+        self.assertTrue(all(self.queue.articles.document(claim.article_id).get().to_dict()['claim_token']
+                            == claim.token for claim in claims))
+
+    def test_stop_between_query_and_bulk_admission_prevents_all_leases(self):
+        self.seed([article(i, f'outlet-{i}.ke') for i in range(12)])
+        original = self.database.get_all
+        def stop_before_read(references, **kwargs):
+            self.queue.set_control(stop=True, state='paused_by_operator')
+            return original(references, **kwargs)
+        with patch.object(self.database, 'get_all', stop_before_read):
+            self.assertEqual(self.queue.claim(12), [])
+        rows = [row for path, row in self.database.data.items() if '/articles/' in path]
+        self.assertTrue(all(row['state'] == 'ready' and 'claim_token' not in row for row in rows))
+
+    def test_stale_candidate_in_batch_does_not_spend_outlet_capacity(self):
+        self.seed([article(i) for i in range(12)])
+        original = self.database.get_all
+        stolen = []
+        def peer_takes_first(references, **kwargs):
+            references = list(references)
+            if not stolen:
+                reference = next(reference for reference in references if reference.path != self.queue.run_ref.path)
+                stolen.append(reference)
+                reference.update({'state': 'leased', 'owner': 'peer', 'claim_token': 'peer-token',
+                                  'due_at': self.now + 600})
+            return original(references, **kwargs)
+        with patch.object(self.database, 'get_all', peer_takes_first):
+            claims = self.queue.claim(2, per_outlet=2)
+        self.assertEqual(len(claims), 2)
+        self.assertNotIn(stolen[0].id, {claim.article_id for claim in claims})
+        peer_row = stolen[0].get().to_dict()
+        self.assertEqual((peer_row['owner'], peer_row['claim_token']), ('peer', 'peer-token'))
+
+    def test_batch_rechecks_phase_and_keeps_recovery_checkpoint(self):
+        self.seed([article(i, f'outlet-{i}.ke') for i in range(6)])
+        publishers = self.queue.claim(6)
+        for claim in publishers:
+            self.queue.handoff(claim, 'gs://bucket/' + claim.article_id,
+                next_phase='archive', retry_at=0, result=result(claim.item, 'queued'))
+        original = self.database.get_all
+        changed = []
+        def change_phase_before_read(references, **kwargs):
+            references = list(references)
+            if not changed:
+                reference = next(reference for reference in references if reference.path != self.queue.run_ref.path)
+                changed.append(reference)
+                reference.update({'phase': 'browser', 'browser_due_at': self.now + 10})
+            return original(references, **kwargs)
+        with patch.object(self.database, 'get_all', change_phase_before_read):
+            archives = self.queue.claim(6, phase='archive')
+        self.assertEqual(len(archives), 5)
+        self.assertTrue(all(claim.phase == 'archive' and claim.checkpoint_uri == 'gs://bucket/' + claim.article_id
+                            for claim in archives))
+        self.assertNotIn(changed[0].id, {claim.article_id for claim in archives})
+
+    def test_bulk_read_failure_never_leaves_partial_claims(self):
+        self.seed([article(i, f'outlet-{i}.ke') for i in range(12)])
+        with patch.object(self.database, 'get_all', side_effect=RuntimeError('Cloud read unavailable')):
+            with self.assertRaisesRegex(RuntimeError, 'Cloud read unavailable'):
+                self.queue.claim(12)
+        self.assertTrue(all(row['state'] == 'ready' for path, row in self.database.data.items()
+                            if '/articles/' in path))
+
     def test_expired_lease_is_reclaimed_and_stale_owner_cannot_complete_or_release(self):
         self.seed([article(0)])
         original = self.queue.claim(1)[0]

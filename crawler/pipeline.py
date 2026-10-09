@@ -24,7 +24,7 @@ class Pipeline(Fetcher):
  def fetch(self,item,run,country,*,_phase=None,_checkpoint=None):
   if _phase not in (None,'publisher','browser','archive'):raise ValueError('Unknown extraction phase')
   aid=key(item['url']);began=time.monotonic();queued_at_start=queue_wait_seconds();host_queued_at_start=self.host_queue_wait_seconds();events=[];best=None;unresolved=False
-  previous_elapsed=0.;checkpoint_extractor=EXTRACTOR_VERSION
+  previous_elapsed=0.;checkpoint_extractor=EXTRACTOR_VERSION;archive_lookups={};archive_seen=set();prior_unresolved=False
   result={**item,'article_id':aid,'run_id':run,'country':country,'updated_at':now(),'status':'deferred','attempts':events,'response_bytes':0,'stored_bytes':0,'raw_uri':None,'text_uri':None,'http_status':None,'error':None,'reused':False,'extractor_version':EXTRACTOR_VERSION}
   if _phase in ('browser','archive'):
    checkpoint=copy.deepcopy(_checkpoint)
@@ -32,6 +32,9 @@ class Pipeline(Fetcher):
    result=checkpoint['result']
    if (result.get('article_id'),result.get('run_id'),result.get('country'))!=(aid,run,country):raise ValueError('Checkpoint belongs to a different article or run')
    events=result['attempts'];best=checkpoint['best'];unresolved=checkpoint['unresolved'];previous_elapsed=float(checkpoint['elapsed_seconds'])
+   prior_unresolved=unresolved
+   archive_lookups=copy.deepcopy(checkpoint.get('archive_lookups',{}));archive_seen=set(checkpoint.get('archive_seen',[]))
+   if not isinstance(archive_lookups,dict):raise ValueError('Invalid archive lookup checkpoint')
    checkpoint_extractor=checkpoint.get('extractor_version',result.get('extractor_version'))
    if not math.isfinite(previous_elapsed) or previous_elapsed<0:raise ValueError('Invalid checkpoint work duration')
    result.update(status='deferred',updated_at=now())
@@ -42,21 +45,39 @@ class Pipeline(Fetcher):
    if _phase!='publisher' or _checkpoint.get('version')!=1 or _checkpoint.get('next_phase')!='publisher':raise ValueError('Publisher phase cannot resume an archive checkpoint')
    best=copy.deepcopy(_checkpoint.get('best'))
   def elapsed():return previous_elapsed+time.monotonic()-began-(queue_wait_seconds()-queued_at_start)-(self.host_queue_wait_seconds()-host_queued_at_start)
-  def handoff(next_phase,**phase_state):
+  def handoff(next_phase,*,retry_at=None,**phase_state):
    # Candidate text and immutable evidence survive process and claim changes.
    # Queueing browser/archive work never consumes a publisher download slot.
    self.check_running()
    checkpoint={'version':1,'next_phase':next_phase,'result':copy.deepcopy(result),
                'extractor_version':EXTRACTOR_VERSION,
                'best':copy.deepcopy(best),'unresolved':unresolved,'elapsed_seconds':max(0.,elapsed()),
+               'archive_lookups':copy.deepcopy(archive_lookups),'archive_seen':sorted(archive_seen),
                **copy.deepcopy(phase_state)}
-   return {**result,'status':'queued','next_phase':next_phase,'retry_at':time.time(),
+   return {**result,'status':'queued','next_phase':next_phase,'retry_at':time.time() if retry_at is None else retry_at,
            '_checkpoint':checkpoint,'error':None}
   def stage(name,outcome,**kw):
    events.append({'stage':name,'status':outcome,'finished_at':now(),**kw});result['updated_at']=now()
    self.put(f'runs/{run}/toolbox/{aid}.json',json.dumps(result),'application/json')
   def active(name):
    with self.lock:self.live[aid]={'outlet':item['outlet'],'stage':name}
+  def service_wait(got):
+   retry_at=got.get('service_retry_at')
+   if retry_at is None:return None
+   retry_at=float(retry_at)
+   if not math.isfinite(retry_at):raise ValueError('Invalid archive service retry time')
+   retry_at=max(time.time()+1,retry_at)
+   # A shared archive outage is unfinished recovery, not an article attempt.
+   # Coalesce its operational waits while retaining retrieval/HTTP evidence.
+   wait=next((event for event in events if event.get('stage')=='archive_service_wait'),None)
+   if wait is None:
+    stage('archive_service_wait','waiting',retry_at=retry_at,waits=1,reason=got.get('error'),
+          url=got.get('final_url') or got.get('url'),http_attempts=copy.deepcopy(got.get('attempts',[])),
+          robots_uri=got.get('robots_uri'))
+   else:
+    wait.update(retry_at=retry_at,waits=wait.get('waits',1)+1,last_wait_at=now(),reason=got.get('error'))
+   # Waiting for a service to recover must not exhaust the per-pass work budget.
+   return handoff('archive',retry_at=retry_at,elapsed_seconds=0.,service_wait_until=retry_at)
   def consider(body,source,raw_uri,http_status=200,method='html'):
    nonlocal best,unresolved
    try:analysis=extract(body,source)
@@ -71,6 +92,10 @@ class Pipeline(Fetcher):
    active(name)
    got=super(Pipeline,self).fetch({**item,'url':url},run,country)
    result['response_bytes']+=got.get('response_bytes',0);result['stored_bytes']+=got.get('stored_bytes',0)
+   if got.get('service_retry_at') is not None and not got.get('raw_uri'):
+    # A no-document service wait is represented once below rather than adding
+    # another apparent article retrieval attempt every time a cooldown wakes.
+    return got,None
    stage(name,got['status'],url=url,http_attempts=got['attempts'],error=got.get('error'),raw_uri=got.get('raw_uri'),final_url=got.get('final_url'))
    body=self.read(got['raw_uri']) if got.get('raw_uri') else b''
    analysis=consider(body,got.get('final_url',url),got.get('raw_uri'),got.get('http_status'),name) if body and got.get('http_status')==200 and 'partial' not in (got.get('error') or '') else None
@@ -98,20 +123,44 @@ class Pipeline(Fetcher):
     stage('stored_html_reanalysis',analysis.get('quality','deferred'),**evidence)
     if best and best['quality']=='candidate':break
    result['extractor_version']=EXTRACTOR_VERSION
+  def restore_archive_lookups():
+   # Old second-pass checkpoints retain immutable lookup artifacts but not the
+   # JSON payload. Read those artifacts once instead of querying Wayback again.
+   for event in events:
+    if event.get('stage')!='archive_lookup' or event.get('status')!='checked':continue
+    stamp=event.get('timestamp');stamp='' if stamp=='latest' else stamp
+    if not isinstance(stamp,str) or stamp in archive_lookups:continue
+    uri=event.get('lookup_uri') or '';prefix='gs://'+self.bucket.name+'/'
+    if not uri.startswith(prefix):continue
+    path=uri[len(prefix):]
+    if (not path.startswith('runs/'+run+'/') or '/archive-lookups/' not in path
+        or path.rsplit('/',1)[-1]!=aid+'-'+(stamp or 'latest')+'.json'):continue
+    self.check_running()
+    try:
+     payload=json.loads(self.bucket.blob(path).download_as_text(timeout=30))
+     if not isinstance(payload,dict) or not isinstance(payload.get('archived_snapshots'),dict):continue
+     archive_lookups[stamp]={'payload':payload,'lookup_uri':uri,'checked_at':event.get('finished_at'),'restored':True}
+    except Exception:
+     self.check_running()
+     # Missing/invalid old evidence keeps the normal network recovery path.
+     continue
   try:
+   if _phase=='archive' and _checkpoint.get('service_wait_until',0)>time.time():
+    return handoff('archive',retry_at=_checkpoint['service_wait_until'],elapsed_seconds=0.,service_wait_until=_checkpoint['service_wait_until'])
    if _phase in ('browser','archive') and checkpoint_extractor!=EXTRACTOR_VERSION:
     reanalyse_stored_html()
+   if _phase=='archive':restore_archive_lookups()
    if _phase in (None,'publisher'):
     active('HTTP + extraction')
     first,analysis=retrieve(item['url'],'http')
-    unresolved|=first['status'] in ('temporary_error','rate_limited')
+    unresolved|=first['status'] in ('temporary_error','rate_limited','robots_unavailable')
     # Canonical/OG URLs are discovered from the response, never manually supplied.
     if not best or best['quality']!='candidate':
      choices=list(dict.fromkeys((analysis or {}).get('discovered',[])))[:2]
      if not choices:stage('publisher_url_discovery','no_candidate',reason='No alternative same-host canonical/OG article URL in response')
      for url in choices:
       if elapsed()>240:unresolved=True;stage('publisher_url_discovery','deferred',reason='Per-URL time budget');break
-      got,_=retrieve(url,'publisher_url_discovery');unresolved|=got['status'] in ('temporary_error','rate_limited')
+      got,_=retrieve(url,'publisher_url_discovery');unresolved|=got['status'] in ('temporary_error','rate_limited','robots_unavailable')
       if best and best['quality']=='candidate':break
     else:stage('publisher_url_discovery','not_needed',reason='Usable candidate from initial HTML')
    if _phase!='archive':
@@ -137,33 +186,56 @@ class Pipeline(Fetcher):
    if _phase in ('publisher','browser') and (not best or best['quality']!='candidate'):
     return handoff('archive')
    if not best or best['quality']!='candidate':
-    seen=set()
+    seen=set(archive_seen)
     for stamp in [str(item.get('first_observed','')).replace('-',''),'']:
      if elapsed()>300:
       unresolved=True;stage('archive','deferred',reason='Per-URL time budget');break
      active('archive lookup')
      api='https://archive.org/wayback/available?'+urlencode({'url':item['url'],**({'timestamp':stamp} if stamp else {})})
-     payload=None
-     for attempt in range(2):
-      try:
-       code,headers,body,large=self.one(api)
-       if code!=200 or large:raise RuntimeError('Archive availability HTTP '+str(code))
-       payload=json.loads(body);uri=self.put(f'runs/{run}/archive-lookups/{aid}-{stamp or "latest"}.json',body,'application/json');stage('archive_lookup','checked',timestamp=stamp or 'latest',lookup_uri=uri);break
-      except Exception as e:
-       stage('archive_lookup','error',attempt=attempt+1,reason=str(e)[:250])
-       if attempt==0:time.sleep(5)
+     cached=archive_lookups.get(stamp);payload=cached.get('payload') if isinstance(cached,dict) else None
+     if payload is not None:
+      # Payload and its original immutable evidence URI cross claim/process
+      # boundaries together; no second availability request is necessary.
+      if not isinstance(payload,dict) or not isinstance(payload.get('archived_snapshots'),dict):raise ValueError('Invalid cached archive availability')
+      cached['reuses']=cached.get('reuses',0)+1
+     else:
+      for attempt in range(2):
+       try:
+        service_retry=getattr(self,'archive_service_retry_at',None)
+        pause=service_retry(api) if callable(service_retry) else None
+        if pause is not None:return service_wait({'service_retry_at':pause,'url':api,'error':'Archive availability service is cooling down'})
+        code,headers,body,large=self.one(api)
+        if code!=200 or large:raise RuntimeError('Archive availability HTTP '+str(code))
+        payload=json.loads(body)
+        if not isinstance(payload,dict) or not isinstance(payload.get('archived_snapshots'),dict):raise ValueError('Invalid archive availability response')
+        uri=self.put(f'runs/{run}/archive-lookups/{aid}-{stamp or "latest"}.json',body,'application/json')
+        archive_lookups[stamp]={'payload':copy.deepcopy(payload),'lookup_uri':uri,'checked_at':now()}
+        stage('archive_lookup','checked',timestamp=stamp or 'latest',lookup_uri=uri);break
+       except Exception as e:
+        payload=None;stage('archive_lookup','error',attempt=attempt+1,reason=str(e)[:250])
+        pause=service_retry(api) if callable(service_retry) else None
+        if pause is not None:return service_wait({'service_retry_at':pause,'url':api,'error':str(e)[:250]})
+        if attempt==0:time.sleep(5)
      if payload is None:unresolved=True;continue
      match=payload.get('archived_snapshots',{}).get('closest',{})
      if not match.get('available'):stage('archive','no_snapshot',timestamp=stamp or 'latest');continue
      url=match.get('url','').replace('http://web.archive.org/','https://web.archive.org/')
      if urlsplit(url).hostname!='web.archive.org':unresolved=True;stage('archive','deferred',reason='Unexpected archive host');continue
      if url in seen:stage('archive','duplicate_snapshot');continue
-     seen.add(url);got,arch_analysis=retrieve(url,'archive');events[-1]['snapshot_timestamp']=match.get('timestamp')
+     seen.add(url);got,arch_analysis=retrieve(url,'archive')
+     if events[-1].get('stage')=='archive' and events[-1].get('url')==url:events[-1]['snapshot_timestamp']=match.get('timestamp')
+     waiting=service_wait(got)
+     if waiting is not None:return waiting
+     if got['status'] not in ('temporary_error','rate_limited','robots_unavailable') and (got['status'] not in ('retrieved','saved') or (arch_analysis or {}).get('quality') in ('candidate','partial','missing')):archive_seen.add(url)
      if not best or best['quality']!='candidate':
       for alternate in list(dict.fromkeys((arch_analysis or {}).get('discovered',[])))[:2]:
        if alternate in seen or urlsplit(alternate).hostname!='web.archive.org':continue
        if elapsed()>300:unresolved=True;stage('archive_canonical','deferred',reason='Per-URL time budget');break
-       seen.add(alternate);alt,_=retrieve(alternate,'archive_canonical');unresolved|=alt['status'] in ('temporary_error','rate_limited','robots_unavailable')
+       seen.add(alternate);alt,alt_analysis=retrieve(alternate,'archive_canonical')
+       waiting=service_wait(alt)
+       if waiting is not None:return waiting
+       if alt['status'] not in ('temporary_error','rate_limited','robots_unavailable') and (alt['status'] not in ('retrieved','saved') or (alt_analysis or {}).get('quality') in ('candidate','partial','missing')):archive_seen.add(alternate)
+       unresolved|=alt['status'] in ('temporary_error','rate_limited','robots_unavailable')
        if best and best['quality']=='candidate':break
      unresolved|=got['status'] in ('temporary_error','rate_limited','robots_unavailable')
      if best and best['quality']=='candidate':break
@@ -175,7 +247,13 @@ class Pipeline(Fetcher):
    result['status']='saved' if best and best['quality']=='candidate' else 'deferred' if unresolved else 'partial' if best else 'exhausted'
    result['error']=None if result['status']=='saved' else 'Some toolbox stages need retry' if unresolved else 'All applicable toolbox stages exhausted'
    stage('final',result['status'],version=VERSION,extractor_version=EXTRACTOR_VERSION,quality=best['quality'] if best else 'missing',characters=len(best['text']) if best else 0)
-   if _phase is not None and result['status']=='deferred':result['_retry_best']=copy.deepcopy(best)
+   if _phase is not None and result['status']=='deferred':
+    if _phase=='archive' and not prior_unresolved:
+     # Publisher/browser work succeeded or was definitively unavailable.
+     # An archive transport failure must not restart those completed stages.
+     retry=handoff('archive',elapsed_seconds=0.,unresolved=False)
+     result['_retry_phase']='archive';result['_retry_checkpoint']=retry['_checkpoint']
+    result['_retry_best']=copy.deepcopy(best)
    return result
   finally:
    with self.lock:self.live.pop(aid,None)

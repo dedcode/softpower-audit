@@ -3,6 +3,47 @@ import copy,json,time
 from crawl import key,now
 from pipeline import Pipeline
 
+def completed_publisher_before_archive_outage(attempts,url):
+ """Conservatively recognize old retries of definitively unavailable pages."""
+ if not isinstance(attempts,list) or any(not isinstance(event,dict) for event in attempts):return False
+ http=[event for event in attempts if event.get('stage')=='http']
+ if len(http)!=1 or http[0].get('url')!=url or http[0].get('status') not in ('unavailable','blocked'):return False
+ replies=http[0].get('http_attempts',[])
+ if not isinstance(replies,list) or not replies or not isinstance(replies[-1],dict) or replies[-1].get('http_status') not in (401,403,404,410):return False
+ browser=[event for event in attempts if event.get('stage')=='browser']
+ if not browser or any(event.get('status')!='not_applicable' for event in browser):return False
+ for event in attempts:
+  name=event.get('stage');status=event.get('status')
+  if name=='publisher_url_discovery' and status not in ('no_candidate','not_needed','unavailable','blocked'):return False
+  if name=='publisher_url_discovery' and status in ('unavailable','blocked'):
+   replies=event.get('http_attempts',[])
+   if not isinstance(replies,list) or not replies or not isinstance(replies[-1],dict) or replies[-1].get('http_status') not in (401,403,404,410):return False
+  if name and name.startswith('extract:') and status=='deferred':return False
+ return any((event.get('stage') in ('archive','archive_canonical') and event.get('status') in ('temporary_error','rate_limited','robots_unavailable'))
+            or (event.get('stage')=='archive_lookup' and event.get('status')=='error') for event in attempts)
+
+def migrate_legacy_archive_retry(state,item,run,country):
+ """Pure, conservative migration shared by workers and a fenced operator."""
+ aid=key(item['url'])
+ if (not isinstance(state,dict) or state.get('version')!=1 or state.get('kind')!='phased-toolbox'
+     or (state.get('article_id'),state.get('run_id'),state.get('country'))!=(aid,run,country)
+     or state.get('next_phase')!='publisher' or state.get('completed_passes')!=1
+     or any(type(state.get(field)) is not int or state[field]<0 for field in ('response_bytes','stored_bytes'))
+     or state.get('pipeline') is not None or not isinstance(state.get('attempts'),list)
+     or not completed_publisher_before_archive_outage(state['attempts'],item['url'])):return None
+ migrated=copy.deepcopy(state)
+ finals=[event for event in state['attempts'] if event.get('stage')=='final']
+ old_result={**item,'article_id':aid,'run_id':run,'country':country,'status':'deferred',
+             'updated_at':finals[-1].get('finished_at') if finals else None,
+             'attempts':copy.deepcopy(state['attempts']),'response_bytes':state['response_bytes'],
+             'stored_bytes':state['stored_bytes'],'raw_uri':None,'text_uri':None,'http_status':None,
+             'error':None,'reused':False}
+ pipeline={'version':1,'next_phase':'archive','result':old_result,
+           'best':copy.deepcopy(state.get('retry_best')),'unresolved':False,'elapsed_seconds':0.,
+           'extractor_version':finals[-1].get('extractor_version') if finals else None}
+ migrated.update(next_phase='archive',pipeline=pipeline,attempts=[],response_bytes=0,stored_bytes=0)
+ return migrated
+
 class RetryingPipeline(Pipeline):
  retry_passes=2
  retry_delay=30
@@ -21,6 +62,13 @@ class RetryingPipeline(Pipeline):
   if not isinstance(passes,int) or not 0<=passes<self.retry_passes:raise ValueError('Checkpoint retry passes are already exhausted')
   pipeline_checkpoint=state['pipeline']
   if phase=='publisher' and passes:
+   migrated=migrate_legacy_archive_retry(state,item,run,country)
+   if migrated is not None:
+    # Older images queued a second publisher pass for archive service outages.
+    # Rebuild its recovery checkpoint instead of re-requesting a known 404/403.
+    old_result=migrated['pipeline']['result']
+    return {**old_result,'status':'queued','next_phase':'archive','retry_at':time.time(),
+            '_checkpoint':migrated,'error':None}
    # The new pass refreshes transient publisher/robots failures, retaining any
    # earlier partial text even if this attempt cannot retrieve that page again.
    with self.lock:self.robots={k:v for k,v in self.robots.items() if v[1]}
@@ -29,6 +77,7 @@ class RetryingPipeline(Pipeline):
   self.check_running()
   pipeline_state=result.pop('_checkpoint',None)
   retry_best=result.pop('_retry_best',None)
+  retry_phase=result.pop('_retry_phase',None);retry_checkpoint=result.pop('_retry_checkpoint',None)
   combined={**result,'attempts':state['attempts']+result['attempts'],
             'response_bytes':state['response_bytes']+result.get('response_bytes',0),
             'stored_bytes':state['stored_bytes']+result.get('stored_bytes',0),'updated_at':now()}
@@ -39,9 +88,15 @@ class RetryingPipeline(Pipeline):
   if result['status']=='deferred':
    passes+=1
    if passes<self.retry_passes:
-    state.update(next_phase='publisher',completed_passes=passes,pipeline=None,retry_best=retry_best,
-                 attempts=combined['attempts'],response_bytes=combined['response_bytes'],stored_bytes=combined['stored_bytes'])
-    return {**combined,'status':'queued','next_phase':'publisher',
+    if retry_phase=='archive' and isinstance(retry_checkpoint,dict):
+     # The checkpoint already contains this pass's cumulative evidence. Keep
+     # the earlier pass prefix separately, avoiding duplicated HTTP counters.
+     state.update(next_phase='archive',completed_passes=passes,pipeline=retry_checkpoint,retry_best=retry_best)
+    else:
+     retry_phase='publisher'
+     state.update(next_phase=retry_phase,completed_passes=passes,pipeline=None,retry_best=retry_best,
+                  attempts=combined['attempts'],response_bytes=combined['response_bytes'],stored_bytes=combined['stored_bytes'])
+    return {**combined,'status':'queued','next_phase':retry_phase,
             'retry_at':time.time()+self.retry_delay,'_checkpoint':state,
             'error':None}
    combined['status']='failed';combined['error']=f'Automatic retry limit reached ({self.retry_passes} toolbox passes); see stage errors'

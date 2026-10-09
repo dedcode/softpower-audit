@@ -246,12 +246,12 @@ class FirestoreHostStore:
                           'updated_at': now}
         return self._transaction(host, operation)
 
-    def observe(self, host, owner, policy, status, seconds, transport_error=False):
+    def observe(self, host, owner, policy, status, seconds, transport_error=False, transport_kind=None):
         from adaptive_rate import feedback
         def operation(state, now):
             if owner not in _active_leases(state, now):
                 return False, None
-            value, changed = feedback(state, now, owner, policy, status, seconds, transport_error)
+            value, changed = feedback(state, now, owner, policy, status, seconds, transport_error, transport_kind)
             return True, value if changed else None
         return self._transaction(host, operation)
 
@@ -308,13 +308,14 @@ class HostLease:
             self.failure = HostLeaseLost(f'Host lease ownership changed for {self.host}')
             raise self.failure
 
-    def observe(self, status, seconds, transport_error=False):
+    def observe(self, status, seconds, transport_error=False, transport_kind=None):
         policy = self.coordinator.adaptive_hosts.get(self.host)
         if policy is None:
             return
         self.check()
+        details = {'transport_kind': transport_kind} if transport_kind is not None else {}
         if not self.coordinator.store.observe(self.host, self.owner, policy, status,
-                                              _seconds(seconds, 'response_seconds'), transport_error):
+                                              _seconds(seconds, 'response_seconds'), transport_error, **details):
             self.failure = HostLeaseLost(f'Host lease ownership changed for {self.host}')
             raise self.failure
 
