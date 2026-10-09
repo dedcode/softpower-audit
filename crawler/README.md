@@ -1159,5 +1159,25 @@ from Cloud Build `46351479-3459-4103-a75d-a61c8aeb80fc`. The uploaded source byt
 were checked against the tested working files. It keeps one task, 48 article
 slots, the existing four-CPU/four-GiB allocation and the full 85,993-URL input.
 Private handover, deployment and connectivity evidence is under
-`distributed/speed-r18/` and `distributed/speed-r20/`; no successful throughput
-claim should be made until new text objects and a live measurement support it.
+`distributed/speed-r18/` and `distributed/speed-r20/` in the private run prefix.
+
+The final execution `softpower-crawler-tszcw` then showed real recovery:
+between 09:01:13 and 09:09:31 UTC on 2026-10-09, saved texts increased from
+60,893 to 61,216 (323 articles in 497.8 seconds, about 2,336 saved texts/hour).
+Finished URLs increased by 382; this separate figure includes partial and
+unsuccessful outcomes. The input remains 85,993 URLs. One worker remained on
+native attempt zero, without an error; the public status endpoint returned 200.
+
+Independent reads verified two newly saved results from this execution:
+1,657 and 521 words of sustained article prose, matching their preserved raw
+HTML and payload hashes. They were new extractions, not reused text objects.
+Evidence is in `distributed/speed-r20/verification.json`, `followup.json` and
+`fulltext-proof.json`. The 430-test suite passed before deployment.
+
+This is a short observed archive-recovery window, not a completion-time
+forecast. Archive connectivity recovered during the final execution; the
+deployment does not establish what caused the earlier TCP refusals to clear.
+All remaining work belongs to KenyaStar, and publisher rate limits can still
+constrain the tail after the ready archive backlog drains. The worker retains
+shared host pauses, retry checkpoints, durable results and its existing cost
+limits rather than treating these temporary failures as completed work.
