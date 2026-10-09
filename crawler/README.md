@@ -1205,3 +1205,24 @@ durable worker/queue handoffs, missed snapshots, partial candidates, archive
 outages, checkpoint restarts and exact cumulative byte/retry accounting. This
 change preserves one worker, 48 article slots and the existing response,
 attempt and resource budgets.
+
+Cloud Build `092dd2cf-6808-444d-adea-5d19310bb956` produced image
+`sha256:2e4d6f7841baec204160968079729dfafeb7346f9d2ef4cca288455753584856`.
+The deployed source hashes match the tested files. A fenced handover retired
+`softpower-crawler-tszcw`; execution `softpower-crawler-s26sq` resumed the same
+85,993-URL queue with 61,942 saved texts and zero remaining old archive jobs.
+
+The first measured live window recovered 30 additional texts in 185.9 seconds.
+Independent inspection of two new archive-first results verified 1,185 and 660
+words, matching raw hashes and extracted paragraphs, with no original publisher
+fetch. An actual two-probe archive miss remained ready for the publisher with
+zero completed publisher retry passes. The bounded proof read 88 article rows
+and eight objects. Evidence is under `distributed/speed-r21/verification.json`,
+`routing-proof.json` and `followup.json` in the private run prefix.
+
+At the 09:45 UTC follow-up, 49 additional texts had been saved (61,991 total),
+with one worker on native attempt zero, no run error, and a successful public
+status response. Archive transport errors were also observed; the short window
+does not establish a sustained rate or completion deadline. Missing archives
+continue as publisher work, preserving the distinction between recovered text
+and an article that remains unresolved.
