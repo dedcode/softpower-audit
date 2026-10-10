@@ -1318,3 +1318,13 @@ Phys.org article and a complete 58-word Standard Digital brief, without replay
 navigation or video listings. All 463 regressions pass, including live Chrome
 fixtures, rejection of unrelated content, durable restart recovery and clean
 short-body extraction.
+
+The verified build was deployed to `softpower-crawler-c6rvc` with one instance.
+The guarded migration inspected 968 pending publisher records and moved 189
+older stored teasers into archive recovery without changing completion totals.
+The initial live verification observed nine active articles and eight newly
+saved texts. Both pilot articles were independently recovered by the main run;
+their compressed texts, raw HTML hashes and linked-source provenance verified.
+These are observed recovery results, not a promise that all remaining URLs are
+available or that the initial rate will persist. Private launch, migration and
+verification proof is under `diagnostics/linked-original/` in the run prefix.
