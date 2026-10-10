@@ -1248,3 +1248,19 @@ All 454 tests pass, including interruption/restart/recovery without a publisher
 fetch, exact byte accounting, completion after a cached missing snapshot and
 expiry of temporary worker exclusions. The instance count and cost limits are
 unchanged.
+
+The r22 image is
+`sha256:44571c9dd9e3a4ebcb75d83bc88ea34b3347a15bc36386b325ce966486087ca2`
+from Cloud Build `1d4499c9-3e96-4130-9668-76cfef1b58f2`. The tested source hashes
+were verified against the build input before a fenced handover. Execution
+`softpower-crawler-7mswc` resumed with 63,295 saved texts. Its first measured
+185.4-second window saved 47 more texts, reaching 63,342, with no HTTP transport
+errors in that window. This is an observed short window, not a forecast.
+
+Independent bounded inspection verified two newly recovered articles whose
+evidence records archive outages from the previous day: 614 and 445 words,
+matching raw HTML hashes and extracted paragraphs, with no original publisher
+fetch. An incomplete pending checkpoint retained its publisher work. Proof is
+under `distributed/speed-r22/routing-proof.json` and `verification.json` in the
+private run prefix. Temporary zero-active snapshots remain possible between
+batches and during source or archive backoff.
