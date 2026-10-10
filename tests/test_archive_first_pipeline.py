@@ -86,7 +86,8 @@ class ArchiveFirstTests(unittest.TestCase):
   lookup.assert_not_called();fetch.assert_not_called()
   inner=publisher['_checkpoint']['pipeline'];self.assertEqual(publisher['next_phase'],'publisher')
   self.assertTrue(inner['archive_first_done']);self.assertFalse(inner['archive_first_complete']);self.assertTrue(inner['archive_lookups'])
-  self.assertIsNone(self.fresh(checkpoint=publisher['_checkpoint']))
+  with patch('retrying.time.time',return_value=1021):
+   self.assertIsNone(self.fresh(checkpoint=publisher['_checkpoint']))
   # A genuine publisher failure leaves the unfinished archive recovery eligible.
   worker,checkpoint=self.resume(publisher,'publisher')
   with patch.object(Fetcher,'fetch',return_value=copy.deepcopy(self.missing)),patch.object(worker,'one') as lookup:
@@ -104,6 +105,34 @@ class ArchiveFirstTests(unittest.TestCase):
    pending=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
   fetch.assert_not_called();self.assertEqual((pending['status'],pending['next_phase']),('queued','publisher'))
   self.assertEqual(pending['_checkpoint']['completed_passes'],0);self.assertFalse(pending['_checkpoint']['pipeline']['archive_first_complete'])
+ def test_interrupted_archive_retries_after_backoff_without_original_publisher(self):
+  with patch('pipeline.time.time',return_value=1000):queued=self.fresh(deadline=1020)
+  archive,checkpoint=self.resume(queued,'archive-outage')
+  wait={**self.got,'status':'robots_unavailable','http_status':None,'raw_uri':None,
+        'response_bytes':0,'stored_bytes':0,'service_retry_at':1060,'error':'Temporary outage'}
+  with patch('pipeline.time.time',return_value=1000),patch.object(archive,'one',return_value=self.payload),patch.object(Fetcher,'fetch',return_value=wait):
+   waiting=archive.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  worker,checkpoint=self.resume(waiting,'expired-deadline')
+  with patch('pipeline.time.time',return_value=1020):
+   pending=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  self.assertEqual(pending['_checkpoint']['pipeline']['archive_first_retry_at'],1320)
+  with patch('retrying.time.time',return_value=1319):self.assertIsNone(self.fresh(checkpoint=pending['_checkpoint'],deadline=1600))
+  with patch('retrying.time.time',return_value=1320):recovery=self.fresh(checkpoint=json.loads(json.dumps(pending['_checkpoint'])),deadline=1600)
+  self.assertEqual(recovery['_checkpoint']['completed_passes'],0)
+  self.assertFalse(recovery['_checkpoint']['pipeline']['archive_unresolved'])
+  resumed,checkpoint=self.resume(recovery,'archive-restored')
+  with patch('pipeline.time.time',return_value=1320),patch.object(resumed,'one') as lookup,patch.object(Fetcher,'fetch',return_value=self.got) as fetch,patch.object(resumed,'read',return_value=self.body),patch('pipeline.extract',return_value={'quality':'candidate','text':'A recovered full article.'}):
+   saved=resumed.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  lookup.assert_not_called();self.assertEqual(fetch.call_args.args[0]['url'],self.snapshot)
+  self.assertEqual(saved['status'],'saved');self.assertEqual(saved['response_bytes'],32)
+  self.assertFalse(any(e['stage']=='http' for e in saved['attempts']))
+ def test_resumed_archive_can_finish_missing_without_synthetic_unresolved_loop(self):
+  pending,_=self.run_archive(self.fresh())
+  state=pending['_checkpoint'];state['pipeline'].update(archive_first_complete=False,archive_first_retry_at=0.,unresolved=True,archive_unresolved=False)
+  recovery=self.fresh(checkpoint=state)
+  completed,_=self.run_archive(recovery)
+  self.assertTrue(completed['_checkpoint']['pipeline']['archive_first_complete'])
+  self.assertIsNone(self.fresh(checkpoint=completed['_checkpoint']))
  def test_prior_pass_prefix_and_current_partial_are_counted_once_after_restart(self):
   previous={'stage':'http','status':'temporary_error','url':self.item['url']};current={'stage':'publisher-note','status':'retained'}
   partial={'quality':'partial','text':'A retained partial before preflight','url':self.item['url'],'raw_uri':'gs://test/raw/retained','digest':'retained','http_status':200}

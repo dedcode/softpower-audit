@@ -12,6 +12,19 @@ def article(url, outlet='news.ke'):
 
 
 class DistributedDispatchTests(unittest.TestCase):
+    def test_archive_outage_cache_expires_but_completed_preflight_cache_remains(self):
+        from collections import OrderedDict
+        items = [article('https://cooling.ke/unfinished'), article('https://cooling.ke/missing')]
+        states = {'cooling.ke': Admission(False, 300, 300)}
+        run = self.archive_first_run(items, states)
+        run.archive_first_ineligible = OrderedDict([(items[0]['url'], 1010.), (items[1]['url'], None)])
+        with patch('distributed_worker.time.time', return_value=1009):
+            self.assertEqual(run.claim_available(), [])
+        with patch('distributed_worker.time.time', return_value=1010):
+            selected = run.claim_available()
+        self.assertEqual([claim.item['url'] for claim in selected], [items[0]['url']])
+        self.assertTrue(selected[0].archive_first)
+        self.assertIn(items[1]['url'], run.archive_first_ineligible)
     def run_with_pages(self, pages, states):
         run = bare_run()
         run.verification = False

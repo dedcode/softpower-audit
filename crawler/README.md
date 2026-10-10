@@ -1226,3 +1226,25 @@ status response. Archive transport errors were also observed; the short window
 does not establish a sustained rate or completion deadline. Missing archives
 continue as publisher work, preserving the distinction between recovered text
 and an article that remains unresolved.
+
+### Interrupted archive preflights resume independently (r22, 2026-10-10)
+
+The zero-active investigation found publisher-ready checkpoints with
+`archive_first_done: true` but `archive_first_complete: false`: temporary
+archive failures had returned to publisher work, and the dispatcher cached
+them as permanently ineligible for archive preflight. A publisher cooldown
+could therefore leave the entire worker idle despite unfinished archive work.
+
+Only an explicitly incomplete preflight with an unresolved publisher can now
+resume during a later publisher cooldown. It retains cached lookups, snapshot
+history, partial text, retry passes and cumulative counters. Returning from
+another interrupted preflight records a five-minute archive backoff, and the
+local exclusion cache expires at that time. Confirmed archive misses retain
+their completed marker and remain publisher-only. A healthy publisher may
+still run normally during archive backoff. Synthetic publisher-pending state
+does not make a completed archive retry appear permanently unresolved.
+
+All 454 tests pass, including interruption/restart/recovery without a publisher
+fetch, exact byte accounting, completion after a cached missing snapshot and
+expiry of temporary worker exclusions. The instance count and cost limits are
+unchanged.

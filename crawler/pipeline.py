@@ -35,14 +35,15 @@ class Pipeline(Fetcher):
    'extractor_version':previous.get('extractor_version',EXTRACTOR_VERSION),'unresolved':True,'elapsed_seconds':0.,
    'archive_lookups':previous.get('archive_lookups',{}),'archive_seen':previous.get('archive_seen',[]),
    'publisher_unresolved':True,'archive_first':True,'archive_first_done':False,'archive_first_complete':False,
-   'archive_unresolved':bool(previous.get('unresolved',False)),'publisher_retry_at':publisher_retry_at}
+   'archive_unresolved':bool(previous.get('archive_unresolved',previous.get('unresolved',False))),
+   'archive_first_retry_at':0.,'publisher_retry_at':publisher_retry_at}
  def fetch_phase(self,item,run,country,*,phase='publisher',checkpoint=None):
   return Pipeline.fetch(self,item,run,country,_phase=phase,_checkpoint=checkpoint)
  def fetch(self,item,run,country,*,_phase=None,_checkpoint=None):
   if _phase not in (None,'publisher','browser','archive'):raise ValueError('Unknown extraction phase')
   aid=key(item['url']);began=time.monotonic();queued_at_start=queue_wait_seconds();host_queued_at_start=self.host_queue_wait_seconds();events=[];best=None;unresolved=False
   previous_elapsed=0.;checkpoint_extractor=EXTRACTOR_VERSION;archive_lookups={};archive_seen=set();prior_unresolved=False
-  publisher_unresolved=False;archive_first=False;archive_first_done=False;archive_first_complete=False;archive_unresolved=False;publisher_retry_at=None
+  publisher_unresolved=False;archive_first=False;archive_first_done=False;archive_first_complete=False;archive_unresolved=False;publisher_retry_at=None;archive_first_retry_at=0.
   result={**item,'article_id':aid,'run_id':run,'country':country,'updated_at':now(),'status':'deferred','attempts':events,'response_bytes':0,'stored_bytes':0,'raw_uri':None,'text_uri':None,'http_status':None,'error':None,'reused':False,'extractor_version':EXTRACTOR_VERSION}
   if _phase in ('browser','archive') or (_phase=='publisher' and isinstance(_checkpoint,dict) and 'result' in _checkpoint):
    checkpoint=copy.deepcopy(_checkpoint)
@@ -53,6 +54,8 @@ class Pipeline(Fetcher):
    publisher_unresolved=bool(checkpoint.get('publisher_unresolved',False));archive_first=bool(checkpoint.get('archive_first',False))
    archive_first_done=bool(checkpoint.get('archive_first_done',False));archive_first_complete=bool(checkpoint.get('archive_first_complete',False))
    archive_unresolved=bool(checkpoint.get('archive_unresolved',False));publisher_retry_at=checkpoint.get('publisher_retry_at')
+   archive_first_retry_at=float(checkpoint.get('archive_first_retry_at',0.))
+   if not math.isfinite(archive_first_retry_at):raise ValueError('Invalid archive retry time')
    if publisher_retry_at is not None:
     publisher_retry_at=float(publisher_retry_at)
     if not math.isfinite(publisher_retry_at):raise ValueError('Invalid publisher retry time')
@@ -88,6 +91,7 @@ class Pipeline(Fetcher):
                'publisher_unresolved':publisher_unresolved,'archive_first':archive_first,
                'archive_first_done':archive_first_done,'archive_first_complete':archive_first_complete,
                'archive_unresolved':archive_unresolved,'publisher_retry_at':publisher_retry_at,
+               'archive_first_retry_at':archive_first_retry_at,
                **copy.deepcopy(phase_state)}
    return {**result,'status':'queued','next_phase':next_phase,'retry_at':time.time() if retry_at is None else retry_at,
            '_checkpoint':checkpoint,'error':None}
@@ -99,7 +103,8 @@ class Pipeline(Fetcher):
   def publisher_handoff(complete,reason):
    stage('archive_first','publisher_pending',reason=reason)
    return handoff('publisher',elapsed_seconds=0.,unresolved=True,publisher_unresolved=True,
-    archive_first=False,archive_first_done=True,archive_first_complete=complete,archive_unresolved=unresolved)
+    archive_first=False,archive_first_done=True,archive_first_complete=complete,archive_unresolved=unresolved,
+    archive_first_retry_at=0. if complete else time.time()+300.)
   def service_wait(got):
    retry_at=got.get('service_retry_at')
    if retry_at is None:return None

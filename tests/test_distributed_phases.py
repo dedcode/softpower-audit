@@ -8,6 +8,23 @@ from test_distributed_worker import bare_run, claim
 
 
 class DistributedPhasesTests(unittest.TestCase):
+    def test_incomplete_archive_backoff_is_cached_with_expiry_not_forever(self):
+        run, item = self.prepare()
+        item.archive_first = True
+        item.publisher_retry_at = 1600.
+        item.checkpoint_uri = 'gs://private-test/' + run.prefix + 'distributed/checkpoints/' + item.article_id + '/old-token.json.gz'
+        checkpoint = {'pipeline': {'archive_first_complete': False, 'archive_first_retry_at': 1300.}}
+        run.bucket.blob.return_value.download_as_bytes.return_value = gzip.compress(json.dumps({
+            'article_id': item.article_id, 'run_id': run.run_id,
+            'phase': 'publisher', 'checkpoint': checkpoint}).encode())
+        run.fetcher.archive_first_handoff = unittest.mock.Mock(return_value=None)
+        with patch('distributed_worker.time.time', return_value=1000):
+            result = run.fetch_claim(item)
+        self.assertEqual(run.archive_first_ineligible[item.item['url']], 1300.)
+        run.persist_result(item, result)
+        run.queue.complete.assert_not_called()
+        run.queue.release.assert_called_once()
+        run.fetcher.fetch_phase.assert_not_called()
     def prepare(self, phase='publisher'):
         run = bare_run()
         run.verification = False

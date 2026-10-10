@@ -1,5 +1,5 @@
 """Retry incomplete toolbox passes before returning a terminal URL result."""
-import copy,json,time
+import copy,json,time,math
 from crawl import key,now
 from pipeline import Pipeline
 
@@ -59,7 +59,16 @@ class RetryingPipeline(Pipeline):
   passes=state.get('completed_passes')
   if type(passes) is not int or passes<0:raise ValueError('Invalid checkpoint retry passes')
   pipeline=state.get('pipeline')
-  if state.get('next_phase')!='publisher' or passes>=self.retry_passes or state.get('archive_first_done') or (isinstance(pipeline,dict) and pipeline.get('archive_first_done')):return None
+  if state.get('next_phase')!='publisher' or passes>=self.retry_passes:return None
+  if state.get('archive_first_done') or (isinstance(pipeline,dict) and pipeline.get('archive_first_done')):
+   # A temporary archive outage is unfinished work. Only a verified completed
+   # preflight stays publisher-only; incomplete preflights may resume after
+   # their own backoff even while the publisher remains in cooldown.
+   if not (isinstance(pipeline,dict) and pipeline.get('archive_first_complete') is False
+           and pipeline.get('publisher_unresolved') is True):return None
+   retry_at=float(pipeline.get('archive_first_retry_at',0.))
+   if not math.isfinite(retry_at):raise ValueError('Invalid archive retry time')
+   if retry_at>time.time():return None
   if pipeline is None:pipeline={'version':1,'next_phase':'publisher','best':state.get('retry_best')}
   pipeline=self.archive_first_checkpoint(item,run,country,checkpoint=pipeline,publisher_retry_at=publisher_retry_at)
   state.update(next_phase='archive',pipeline=pipeline)

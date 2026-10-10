@@ -284,7 +284,11 @@ class DistributedRun(Run):
                         cache = getattr(self, 'archive_first_ineligible', None)
                         if cache is None:
                             cache = self.archive_first_ineligible = OrderedDict()
-                        cache[claim.item['url']] = None
+                        inner = (checkpoint or {}).get('pipeline') or {}
+                        retry_at = inner.get('archive_first_retry_at', 0.)
+                        cache[claim.item['url']] = (retry_at if inner.get('archive_first_complete') is False
+                                                  and isinstance(retry_at, (int, float)) and retry_at > time.time()
+                                                  else None)
                         cache.move_to_end(claim.item['url'])
                         while len(cache) > 4096:
                             cache.popitem(last=False)
@@ -308,7 +312,11 @@ class DistributedRun(Run):
         self.dispatch_retry_seconds = None
         with self.claim_lock:
             active = list(self.claims.values())
-            archive_first_ineligible = set(getattr(self, 'archive_first_ineligible', ()))
+            cache = getattr(self, 'archive_first_ineligible', {})
+            for url, until in list(cache.items()):
+                if until is not None and until <= time.time():
+                    del cache[url]
+            archive_first_ineligible = set(cache)
         capacity = self.config['workers'] - len(active)
         if capacity <= 0:
             return []
