@@ -1287,3 +1287,34 @@ and two returned gateway timeouts. That pilot is inconclusive and has not
 been integrated into extraction. The earlier two-instance comparison also
 does not establish whether KenyaStar's HTTP 429 throttling is per IP: it
 tested two old links returning identical 403/404 responses.
+
+### Recover explicitly linked original articles (2026-10-10)
+
+Some KenyaStar archive pages contain only a teaser and a `Read more` link
+to the original publisher. The extractor now discovers at most two explicit
+continuations inside a single article, excluding navigation, listings and
+paywalls. Archived continuations can also identify their public HTTPS original.
+Recovery uses the ordinary robots checks, shared host pacing, bounded downloads
+and isolated extractor. It never follows a chain of further continuations.
+
+A full-body candidate must independently match the teaser's headline or at
+least twelve consecutive opening words. Unrelated, restricted and incomplete
+pages retain the original partial result. Transient continuation failures are
+retryable, with at most one attempt per link in each phase invocation. Older
+pending teasers can be reanalysed before contacting the paused publisher.
+
+Linked full text keeps its original corpus URL and outlet. Its result records
+`text_origin=linked_original`, `final_url` for the retrieved source,
+`publication_url`, `publication_raw_uri`, and `identity_match`. The original
+teaser HTML remains preserved; a source article must not be interpreted as
+proof that the entire body appeared on the Kenyan website. Provenance columns
+are added by `scripts/migrate_continuation_schema.py`.
+
+Legacy Standard Digital briefs use the exact `main-article` body. Generic
+fallback parsers cannot add related videos to that body. A short brief requires
+three substantive paragraphs and at least 250 characters; the generic article
+threshold remains 400 characters. The final cloud pilot verified a 995-word
+Phys.org article and a complete 58-word Standard Digital brief, without replay
+navigation or video listings. All 463 regressions pass, including live Chrome
+fixtures, rejection of unrelated content, durable restart recovery and clean
+short-body extraction.

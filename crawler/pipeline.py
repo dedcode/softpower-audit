@@ -4,6 +4,7 @@ from urllib.parse import urlsplit,urlencode
 from crawl import Fetcher,key,now,public_url,UA
 from isolation import extract_isolated as extract,render_isolated,IsolationError,queue_wait_seconds
 from extractor_version import VERSION as EXTRACTOR_VERSION
+from extract import continuation_matches
 VERSION="toolbox-2-isolated"
 
 def redirected_to_bare_homepage(response):
@@ -42,7 +43,7 @@ class Pipeline(Fetcher):
  def fetch(self,item,run,country,*,_phase=None,_checkpoint=None):
   if _phase not in (None,'publisher','browser','archive'):raise ValueError('Unknown extraction phase')
   aid=key(item['url']);began=time.monotonic();queued_at_start=queue_wait_seconds();host_queued_at_start=self.host_queue_wait_seconds();events=[];best=None;unresolved=False
-  previous_elapsed=0.;checkpoint_extractor=EXTRACTOR_VERSION;archive_lookups={};archive_seen=set();prior_unresolved=False
+  previous_elapsed=0.;checkpoint_extractor=EXTRACTOR_VERSION;archive_lookups={};archive_seen=set();prior_unresolved=False;continuation_attempted=set()
   publisher_unresolved=False;archive_first=False;archive_first_done=False;archive_first_complete=False;archive_unresolved=False;publisher_retry_at=None;archive_first_retry_at=0.
   result={**item,'article_id':aid,'run_id':run,'country':country,'updated_at':now(),'status':'deferred','attempts':events,'response_bytes':0,'stored_bytes':0,'raw_uri':None,'text_uri':None,'http_status':None,'error':None,'reused':False,'extractor_version':EXTRACTOR_VERSION}
   if _phase in ('browser','archive') or (_phase=='publisher' and isinstance(_checkpoint,dict) and 'result' in _checkpoint):
@@ -136,6 +137,8 @@ class Pipeline(Fetcher):
    if http_status!=200:return analysis
    rank={'candidate':3,'partial':2,'missing':0}
    if text and (best is None or (rank[analysis['quality']],len(text))>(rank[best['quality']],len(best['text']))):best={**analysis,'text':text,'url':source,'raw_uri':raw_uri,'digest':hashlib.sha256(body).hexdigest(),'http_status':http_status}
+   elif best and best.get('raw_uri')==raw_uri and analysis.get('continuations'):
+    best.update(continuations=analysis['continuations'],title=analysis.get('title',best.get('title','')))
    return analysis
   def retrieve(url,name):
    active(name)
@@ -193,7 +196,45 @@ class Pipeline(Fetcher):
      self.check_running()
      # Missing/invalid old evidence keeps the normal network recovery path.
      continue
+  def recover_linked_article():
+   nonlocal best,unresolved
+   if not best or best['quality']=='candidate':return
+   reference=copy.deepcopy(best)
+   tried=continuation_attempted|{e.get('url') for e in events if e.get('stage')=='article_continuation' and e.get('status')!='deferred'}
+   for target in reference.get('continuations',[])[:2]:
+    if target in tried:continue
+    if elapsed()>300:
+     unresolved=True;stage('article_continuation','deferred',url=target,reason='Per-URL time budget');break
+    continuation_attempted.add(target)
+    active('Linked original article')
+    got=super(Pipeline,self).fetch({**item,'url':target},run,country)
+    self.check_running()
+    result['response_bytes']+=got.get('response_bytes',0);result['stored_bytes']+=got.get('stored_bytes',0)
+    evidence={'url':target,'final_url':got.get('final_url',target),'raw_uri':got.get('raw_uri'),
+              'publication_raw_uri':reference['raw_uri'],'publication_url':reference['url'],
+              'http_attempts':got.get('attempts',[]),'error':got.get('error')}
+    if got.get('http_status')!=200 or not got.get('raw_uri'):
+     temporary=got.get('status') in ('temporary_error','rate_limited','robots_unavailable')
+     unresolved|=temporary
+     stage('article_continuation','deferred' if temporary else 'unavailable',**evidence);continue
+    try:
+     body=self.read(got['raw_uri']);analysis=extract(body,got.get('final_url',target));text=analysis.pop('text')
+    except Exception as exc:
+     self.check_running();unresolved=True;stage('article_continuation','deferred',reason=type(exc).__name__+': '+str(exc)[:250],**evidence);continue
+    match=continuation_matches(reference.get('title',''),reference['text'],analysis.get('title',''),text)
+    if analysis.get('quality')!='candidate' or not match:
+     stage('article_continuation','rejected',reason='Full-body quality or story identity did not match',
+           candidate_quality=analysis.get('quality'),candidate_title=analysis.get('title'),**evidence);continue
+    best={**analysis,'text':text,'url':got.get('final_url',target),'raw_uri':got['raw_uri'],
+          'digest':hashlib.sha256(body).hexdigest(),'http_status':200,
+          'text_origin':'linked_original','publication_raw_uri':reference['raw_uri'],
+          'publication_url':reference['url'],'identity_match':match}
+    stage('article_continuation','verified',identity_match=match,characters=len(text),**evidence)
+    break
   try:
+   if _phase in ('publisher','browser','archive') and checkpoint_extractor!=EXTRACTOR_VERSION and isinstance(_checkpoint,dict) and 'result' in _checkpoint:
+    reanalyse_stored_html()
+    recover_linked_article()
    if _phase=='archive' and archive_first and publisher_unresolved and (not best or best['quality']!='candidate') and publisher_retry_at is not None and publisher_retry_at<=time.time():
     return publisher_handoff(False,'Publisher cooldown deadline reached')
    if _phase=='archive' and (not best or best['quality']!='candidate') and _checkpoint.get('service_wait_until',0)>time.time():
@@ -203,10 +244,8 @@ class Pipeline(Fetcher):
      return handoff('archive',retry_at=min(wake,publisher_retry_at),elapsed_seconds=0.,service_wait_until=wake,
       unresolved=True,archive_unresolved=unresolved)
     return handoff('archive',retry_at=_checkpoint['service_wait_until'],elapsed_seconds=0.,service_wait_until=_checkpoint['service_wait_until'])
-   if _phase in ('browser','archive') and checkpoint_extractor!=EXTRACTOR_VERSION:
-    reanalyse_stored_html()
    if _phase=='archive':restore_archive_lookups()
-   if _phase in (None,'publisher'):
+   if _phase in (None,'publisher') and (not best or best['quality']!='candidate'):
     active('HTTP + extraction')
     first,analysis=retrieve(item['url'],'http')
     unresolved|=first['status'] in ('temporary_error','rate_limited','robots_unavailable')
@@ -297,12 +336,16 @@ class Pipeline(Fetcher):
      unresolved|=got['status'] in ('temporary_error','rate_limited','robots_unavailable')
      if best and best['quality']=='candidate':break
    else:stage('archive','not_needed',reason='Archive recovery already completed before publisher attempt' if archive_first_complete else 'Usable candidate already found')
+   recover_linked_article()
    if _phase=='archive' and archive_first and publisher_unresolved and (not best or best['quality']!='candidate'):
     return publisher_handoff(not unresolved,'Archive first did not recover verified full text')
    if best:
     data=gzip.compress(best['text'].encode(),mtime=0)
     result.update(text_uri=self.put(f'runs/{run}/extracted/{aid}.txt.gz',data,'application/gzip'),raw_uri=best['raw_uri'],final_url=best['url'],content_sha256=best['digest'],http_status=best['http_status'])
     result['stored_bytes']+=len(data)
+    if best.get('text_origin')=='linked_original':
+     result.update(text_origin='linked_original',publication_raw_uri=best['publication_raw_uri'],
+                   publication_url=best['publication_url'],identity_match=best['identity_match'])
    result['status']='saved' if best and best['quality']=='candidate' else 'deferred' if unresolved else 'partial' if best else 'exhausted'
    result['error']=None if result['status']=='saved' else 'Some toolbox stages need retry' if unresolved else 'All applicable toolbox stages exhausted'
    stage('final',result['status'],version=VERSION,extractor_version=EXTRACTOR_VERSION,quality=best['quality'] if best else 'missing',characters=len(best['text']) if best else 0)

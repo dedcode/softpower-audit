@@ -2,6 +2,7 @@
 import copy,json,time,math
 from crawl import key,now
 from pipeline import Pipeline
+from extractor_version import VERSION as EXTRACTOR_VERSION
 
 def completed_publisher_before_archive_outage(attempts,url):
  """Conservatively recognize old retries of definitively unavailable pages."""
@@ -64,11 +65,15 @@ class RetryingPipeline(Pipeline):
    # A temporary archive outage is unfinished work. Only a verified completed
    # preflight stays publisher-only; incomplete preflights may resume after
    # their own backoff even while the publisher remains in cooldown.
-   if not (isinstance(pipeline,dict) and pipeline.get('archive_first_complete') is False
-           and pipeline.get('publisher_unresolved') is True):return None
-   retry_at=float(pipeline.get('archive_first_retry_at',0.))
-   if not math.isfinite(retry_at):raise ValueError('Invalid archive retry time')
-   if retry_at>time.time():return None
+   stored_recovery=(isinstance(pipeline,dict) and pipeline.get('extractor_version')!=EXTRACTOR_VERSION
+                    and isinstance(pipeline.get('best'),dict) and pipeline['best'].get('quality')=='partial'
+                    and pipeline['best'].get('raw_uri'))
+   if not stored_recovery:
+    if not (isinstance(pipeline,dict) and pipeline.get('archive_first_complete') is False
+            and pipeline.get('publisher_unresolved') is True):return None
+    retry_at=float(pipeline.get('archive_first_retry_at',0.))
+    if not math.isfinite(retry_at):raise ValueError('Invalid archive retry time')
+    if retry_at>time.time():return None
   if pipeline is None:pipeline={'version':1,'next_phase':'publisher','best':state.get('retry_best')}
   pipeline=self.archive_first_checkpoint(item,run,country,checkpoint=pipeline,publisher_retry_at=publisher_retry_at)
   state.update(next_phase='archive',pipeline=pipeline)

@@ -25,6 +25,41 @@ def walk(value):
  elif isinstance(value,list):
   for v in value:yield from walk(v)
 def normalized(text):return ' '.join(text.split())
+def continuation_links(tree,url,paywall):
+ # Only an explicit continuation in the single article body is evidence of
+ # syndication. Navigation, related stories and subscription links are not.
+ if paywall:return []
+ articles=tree.xpath('//article')
+ if len(articles)!=1:return []
+ links=[]
+ for node in articles[0].xpath('.//a[@href]'):
+  label=normalized(node.text_content()).lower()
+  if not re.fullmatch(r'(?:read more|continue reading|read (?:the )?full (?:article|story))\s*[.\u2026]*',label):continue
+  target=urljoin(url,node.get('href'))
+  try:p=urlsplit(target)
+  except ValueError:continue
+  if p.scheme not in ('http','https') or not p.hostname or p.username or p.password:continue
+  choices=[target]
+  if p.hostname=='web.archive.org':
+   replay=re.fullmatch(r'/web/\d{1,14}(?:(?:id|if|im|js|cs|oe|mp)_)?/(https?://.+)',p.path)
+   if replay:
+    original=replay.group(1)
+    choices.append('https://'+original[len('http://'):] if original.startswith('http://') else original)
+  for choice in choices:
+   if choice!=url and choice not in links:links.append(choice)
+ return links[:2]
+
+def continuation_matches(reference,reference_text,candidate,candidate_text):
+ # Keep the ordinary full-body quality gate and independently establish that
+ # this is the linked story, not a homepage, redirect or unrelated article.
+ def tokens(value):return re.findall(r'\w+',value.lower())
+ a=set(tokens(reference.split(' | ')[0].split(' - ')[0]));b=set(tokens(candidate.split(' | ')[0].split(' - ')[0]))
+ if min(len(a),len(b))>=5 and 2*len(a&b)/(len(a)+len(b))>=.8:return 'headline'
+ full=' '.join(tokens(candidate_text))
+ for paragraph in reference_text.split('\n\n'):
+  words=tokens(paragraph)
+  if len(words)>=12 and ' '.join(words[:12]) in full:return 'opening_text'
+ return None
 def clean(node):
  node=html.fromstring(html.tostring(node))
  for e in node.xpath('.//script|.//style|.//nav|.//aside|.//*[contains(@class,"related") or contains(@class,"std-banner") or contains(@class,"cfm-yml") or contains(@class,"social")]'):
@@ -65,7 +100,10 @@ def extract(body,url):
  # BusinessDaily uses article elements for wrappers and related-story cards as
  # well as its body. Select the exact body class instead of weakening the
  # listing-page veto for every parser result with og:type=article.
- classes=CLASSES+('article-story',) if publisher_host(url) in ('businessdailyafrica.com','www.businessdailyafrica.com') else CLASSES
+ classes=CLASSES
+ if publisher_host(url) in ('businessdailyafrica.com','www.businessdailyafrica.com'):classes+=('article-story',)
+ standard=publisher_host(url) in ('standardmedia.co.ke','www.standardmedia.co.ke')
+ if standard:classes+=('main-article',)
  for cls in classes:
   nodes=tree.xpath('//*[contains(concat(" ",normalize-space(@class)," ")," '+cls+' ")]')
   for node in nodes[:2]:
@@ -83,17 +121,26 @@ def extract(body,url):
  for precise in (True,False):
   text=trafilatura.extract(body,url=url,include_comments=False,include_tables=False,favor_precision=precise) or ''
   candidates.append(('precision parser' if precise else 'fallback parser',text,bool(schemas) or 'article' in tree.xpath('//meta[@property="og:type"]/@content')))
+ standard_body=standard and any(m=='article selector: main-article' for m,_,_ in candidates)
  for method,text,anchored in candidates:
   text='\n\n'.join(line for line in text.splitlines() if line.strip() and not any(x in line.lower() for x in PROMO))
   truncated=bool(re.search(r'(?:\.\.\.|…|read more|continue reading)\s*$',text,re.I))
   empty_body_marker=any(m.startswith(('article selector','microdata')) for m,_,_ in candidates) and not any(len(t)>=100 for m,t,_ in candidates if m.startswith(('article selector','microdata')))
   if 'parser' in method and empty_body_marker:anchored=False
-  quality='candidate' if len(text)>=400 and anchored and not paywall and not truncated else 'partial' if len(text)>=100 and (anchored or schemas or paywall) else 'missing'
+  # An explicit legacy Standard body is more reliable than a parser that adds
+  # video cards to a short story. Three substantive paragraphs can constitute
+  # its entire brief; do not lower the generic article threshold.
+  if standard_body and ('parser' in method or method=='table article cell'):anchored=False
+  short_brief=(standard and method=='article selector: main-article' and len(text)>=250
+               and sum(len(p)>=40 for p in text.split('\n\n'))>=3)
+  quality='candidate' if (len(text)>=400 or short_brief) and anchored and not paywall and not truncated else 'partial' if len(text)>=100 and (anchored or schemas or paywall) else 'missing'
   reason='Article body passes structural checks; not human-verified' if quality=='candidate' else 'Subscription preview' if paywall else 'Truncated or insufficient article body'
   result['candidates'].append({'method':method,'characters':len(text),'quality':quality})
-  score=({'candidate':3,'partial':2,'missing':0}[quality],(3 if method.startswith('structured') else 2 if anchored and 'parser' not in method else 1),len(text))
+  specificity=4 if method.startswith('structured') else 3 if method.startswith(('article selector','microdata')) else 2 if method=='single article element' else 1 if method=='table article cell' else 0
+  score=({'candidate':3,'partial':2,'missing':0}[quality],specificity,len(text))
   if score>result.get('_score',(-1,0,0)):result.update(text=text if quality!='missing' else '',quality=quality,method=method,reason=reason,_score=score)
  result.pop('_score',None);result['paywall']=paywall
+ result['continuations']=continuation_links(tree,url,paywall)
  # News listings can have many Article cards; no matching headline/body means no success.
  if not schemas and not paywall and len(tree.xpath('//article'))>8 and not any(c['quality']=='candidate' and c['method'].startswith(('article selector','microdata','structured')) for c in result['candidates']):
   result.update(quality='missing',text='',reason='Listing page, not a single article')

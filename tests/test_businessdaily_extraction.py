@@ -93,7 +93,7 @@ class BusinessDailyExtractionTests(unittest.TestCase):
 
     def test_lightweight_version_and_invalid_url_handling(self):
         self.assertEqual(VERSION, LIGHTWEIGHT_VERSION)
-        self.assertEqual(VERSION, 'toolbox-3-businessdaily-body')
+        self.assertEqual(VERSION, 'toolbox-4-linked-original')
         self.assertIsNone(publisher_host('https://[invalid'))
 
 
