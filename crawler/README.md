@@ -1264,3 +1264,26 @@ fetch. An incomplete pending checkpoint retained its publisher work. Proof is
 under `distributed/speed-r22/routing-proof.json` and `verification.json` in the
 private run prefix. Temporary zero-active snapshots remain possible between
 batches and during source or archive backoff.
+
+### KenyaStar rate experiment stopped (2026-10-10)
+
+The continuous `ke-20261009-r18-continuous-2s` experiment repeatedly resumed
+at two-second spacing after HTTP 429, rather than finding a sustainable rate.
+Its shared Firestore adaptive phase was changed to `aborted` at
+`2026-10-10T16:24:36.866044Z`, using the document update-time precondition.
+The existing cooldown, leases, recorded robots interval, queue and saved
+results were preserved. This invokes the existing non-experimental policy;
+no worker image, instance count or extraction threshold changed.
+
+After the previous cooldown expired, live requests used the recorded
+20-second interval. Observed request starts were about 20–24 seconds apart,
+and four URLs reached final results in the initial verification window.
+No additional full text was saved in that window. This verifies corrected
+pacing, not guaranteed access or a sustained recovery rate.
+
+A separate Common Crawl pilot checked two exact remaining URLs in four
+collections after their publication dates. Two indexes returned no capture
+and two returned gateway timeouts. That pilot is inconclusive and has not
+been integrated into extraction. The earlier two-instance comparison also
+does not establish whether KenyaStar's HTTP 429 throttling is per IP: it
+tested two old links returning identical 403/404 responses.
