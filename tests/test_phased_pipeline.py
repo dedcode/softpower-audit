@@ -98,6 +98,27 @@ class PhasedPipelineTests(unittest.TestCase):
   self.assertEqual(result['raw_uri'],'gs://test/raw/retained')
   self.assertEqual(gzip.decompress(self.bucket.data[result['text_uri'].removeprefix('gs://test/')]).decode(),self.partial_candidate()['text'])
 
+ def test_old_selected_candidate_is_reanalysed_before_earlier_partial_body(self):
+  best=self.partial_candidate();best.update(quality='candidate',text='Corrupted old text '*100)
+  events=[{'stage':'http','status':'retrieved','raw_uri':'gs://test/raw/earlier','url':self.item['url']},
+          {'stage':'browser','status':'rendered','raw_uri':best['raw_uri'],'url':self.item['url']}]
+  checkpoint=self.legacy_checkpoint('archive',events,best);worker=self.worker('selected-reanalysis')
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(worker,'read',return_value=b'preserved HTML') as read, \
+       patch('pipeline.extract',return_value={'quality':'candidate','text':'Corrected shorter text'}):
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  fetch.assert_not_called();read.assert_called_once_with(best['raw_uri'])
+  self.assertEqual(result['status'],'saved')
+  self.assertEqual(gzip.decompress(self.bucket.data[result['text_uri'].removeprefix('gs://test/')]).decode(),'Corrected shorter text')
+
+ def test_unreadable_old_candidate_is_not_saved_without_validation(self):
+  best=self.partial_candidate();best['quality']='candidate'
+  checkpoint=self.legacy_checkpoint('archive',[{'stage':'browser','status':'rendered','raw_uri':best['raw_uri'],'url':self.item['url']}],best)
+  worker=self.worker('unreadable-candidate')
+  with patch.object(Fetcher,'fetch') as fetch,patch.object(worker,'read',side_effect=FileNotFoundError('missing')), \
+       patch.object(worker,'one',return_value=self.no_snapshot):
+   result=worker.fetch_phase(self.item,'run','KE',phase='archive',checkpoint=checkpoint)
+  fetch.assert_not_called();self.assertEqual(result['status'],'partial')
+
  def test_missing_or_corrupt_stored_body_keeps_recovery_and_is_not_reparsed_in_next_phase(self):
   events=[{'stage':'http','status':'retrieved','raw_uri':'gs://test/raw/missing','url':self.item['url']},
           {'stage':'publisher_url_discovery','status':'retrieved','raw_uri':'gs://test/raw/corrupt','url':self.item['url']}]

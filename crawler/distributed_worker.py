@@ -19,6 +19,7 @@ import worker
 from worker import Run
 from crawl import now
 from shared_queue import SharedQueue
+from infrastructure_recovery import temporary_failure,recoverable_cohort
 from shared_hosts import publisher_in_cooldown
 from memory_recovery import Recovery, reclaim_memory
 from result_store import memory_usage, encode_jsonl, JsonlBatch
@@ -493,6 +494,7 @@ class DistributedRun(Run):
                        source_table=self.config['source_table'],
                        limits={key: self.config.get(key) for key in ('workers', 'per_outlet_workers', 'delay_seconds',
                                'max_runtime_seconds', 'max_response_bytes', 'max_total_attempts')})
+        summary['infrastructure_recoverable'] = recoverable_cohort(state,current,self.task_count)
         summary['limits']['workers'] = self.configured_workers
         if any(isinstance(record.get('network'), dict) for record in current):
             # Gauges count only live workers; cumulative counters include the
@@ -695,7 +697,8 @@ class DistributedRun(Run):
             if control.get('state') not in ('ready', 'running', 'continuing'):
                 raise RuntimeError('Shared crawl queue is not ready')
             self.heartbeat('starting')
-            self.publish()
+            initial_summary=self.publish()
+            if self.budget_reached(initial_summary):state='paused_limit'
             if self.verification:
                 deadline = time.monotonic() + 300
                 while len(latest_workers(self.queue.list_workers(execution=self.execution), self.task_count)) < self.task_count:
@@ -843,7 +846,7 @@ class DistributedRun(Run):
             # lease. A failed native task can then be replaced safely by Cloud Run.
             try:
                 if self.publication_gate() is None:
-                    self.queue.heartbeat_worker(worker_state={'state': 'failed'})
+                    self.queue.heartbeat_worker(worker_state={'state':'failed','infrastructure_recoverable':temporary_failure(exc)})
                     self.publish(type(exc).__name__ + ': ' + str(exc)[:500])
             except Exception:
                 pass

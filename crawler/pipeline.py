@@ -136,9 +136,12 @@ class Pipeline(Fetcher):
    text=analysis.pop('text');stage('extract:'+method,analysis['quality'],url=source,raw_uri=raw_uri,extractor_version=EXTRACTOR_VERSION,**analysis)
    if http_status!=200:return analysis
    rank={'candidate':3,'partial':2,'missing':0}
-   if text and (best is None or (rank[analysis['quality']],len(text))>(rank[best['quality']],len(best['text']))):best={**analysis,'text':text,'url':source,'raw_uri':raw_uri,'digest':hashlib.sha256(body).hexdigest(),'http_status':http_status}
-   elif best and best.get('raw_uri')==raw_uri and analysis.get('continuations'):
-    best.update(continuations=analysis['continuations'],title=analysis.get('title',best.get('title','')))
+   same_body=best is not None and best.get('raw_uri')==raw_uri
+   if text and (best is None or same_body or (rank[analysis['quality']],len(text))>(rank[best['quality']],len(best['text']))):
+    # Reanalysis replaces the same preserved body's old assessment, even if a
+    # stricter parser demotes it or fixes corrupted text into fewer characters.
+    best={**analysis,'text':text,'url':source,'raw_uri':raw_uri,'digest':hashlib.sha256(body).hexdigest(),'http_status':http_status}
+   elif same_body and not text:best=None
    return analysis
   def retrieve(url,name):
    active(name)
@@ -156,8 +159,14 @@ class Pipeline(Fetcher):
    # Legacy checkpoints can benefit from a parser correction without spending
    # another publisher/archive request. Each stored body is attempted once in
    # this version; the handoff version prevents repeating it in the next phase.
+   nonlocal best
+   replay=list(events)
+   if best:
+    replay.sort(key=lambda event:event.get('raw_uri')!=best.get('raw_uri'))
+    if best['quality']=='candidate':
+     best={**best,'quality':'partial','reason':'Old extraction awaits body reanalysis'}
    seen=set()
-   for event in list(events):
+   for event in replay:
     name=event.get('stage');status=event.get('status')
     eligible=(name in ('http','publisher_url_discovery','archive','archive_canonical')
               and status in ('retrieved','saved')) or (name=='browser' and status=='rendered')

@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 """Host contention must preserve pacing without exhausting article budgets."""
 import sys
 import threading
@@ -64,7 +65,7 @@ class HostQueueTests(unittest.TestCase):
                     raise AssertionError('HTTP request must retain the host lock')
                 clock.advance(.5)
                 return nullcontext(SimpleNamespace(status_code=200, headers={},
-                    iter_content=lambda *_: [b'article']))
+                    raw=SimpleNamespace(read1=Mock(side_effect=[b'article',b'']),shutdown=lambda:None)))
 
         with patch('crawl.public_url', return_value=SimpleNamespace(hostname='example.org')), patch('crawl.requests.Session', Session):
             fetcher.one(self.item['url'])

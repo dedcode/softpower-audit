@@ -233,6 +233,18 @@ class AggregateTests(unittest.TestCase):
 
 
 class FencingTests(unittest.TestCase):
+    def test_restart_at_exhausted_budget_dispatches_no_articles(self):
+        run=bare_run();run.verification=False
+        run.startup_state=Mock(return_value=None)
+        run.lease_update=Mock();run.heartbeat=Mock();run.release_cohort_lease=Mock()
+        run.queue.export_pending.return_value=[]
+        run.publish=Mock(return_value={'state':'paused_limit','total':1,'processed':0,'pending':1,'response_bytes':1000,'attempts':0})
+        run.budget_reached=Mock(return_value=True)
+        with patch.object(distributed,'memory_usage',return_value={}),patch.object(distributed.worker,'STOP',False):
+            self.assertEqual(run.run(),'paused_limit')
+        run.queue.claim.assert_not_called();run.fetcher.fetch_phase.assert_not_called()
+        run.heartbeat.assert_any_call('paused_limit')
+
     def test_ten_tasks_share_fresh_guard_and_only_first_renews_near_expiry(self):
         bucket = GenerationBucket()
         runs = [bare_run() for _ in range(10)]

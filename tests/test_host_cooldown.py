@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 """A throttled host pauses every article thread, including archive requests."""
 import sys
 import threading
@@ -38,7 +39,7 @@ class HostCooldownTests(unittest.TestCase):
                 owner.starts.append((url, owner.clock.now()))
                 status, headers = owner.replies.pop(0)
                 return nullcontext(SimpleNamespace(status_code=status, headers=headers,
-                    iter_content=lambda *_: [b'response']))
+                    raw=SimpleNamespace(read1=Mock(side_effect=[b'response',b'']),shutdown=lambda:None)))
 
         patch('crawl.requests.Session', Session).start()
 

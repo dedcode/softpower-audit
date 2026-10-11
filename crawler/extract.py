@@ -3,6 +3,7 @@ import json,re
 from urllib.parse import urlsplit,urljoin
 from lxml import html
 import trafilatura
+from trafilatura.utils import decode_file
 from extractor_version import VERSION
 CLASSES=('post-content','post__content','banner-text','story-content','tbl_art','article-body','entry-content','body-copy','article-content__content')
 PROMO=('get full access for','subscribe now','unlimited access to all premium','ad-free browsing','mobile-optimised reading','weekly newsletters','search option is now available','for subscriptions on news from china daily','for more visit china daily','stand with the standard','the standard group plc')
@@ -33,6 +34,7 @@ def continuation_links(tree,url,paywall):
  if len(articles)!=1:return []
  links=[]
  for node in articles[0].xpath('.//a[@href]'):
+  if node.xpath('ancestor::nav|ancestor::aside|ancestor::footer|ancestor::*[contains(@class,"related") or contains(@class,"social")]'):continue
   label=normalized(node.text_content()).lower()
   if not re.fullmatch(r'(?:read more|continue reading|read (?:the )?full (?:article|story))\s*[.\u2026]*',label):continue
   target=urljoin(url,node.get('href'))
@@ -73,7 +75,9 @@ def clean(node):
 def extract(body,url):
  result={'text':'','quality':'missing','method':None,'reason':'No article body','candidates':[],'title':'','discovered':[]}
  if not body.strip():return result
- try:tree=html.fromstring(body)
+ try:
+  body=decode_file(body)
+  tree=html.fromstring(body.encode('utf-8'),parser=html.HTMLParser(encoding='utf-8'))
  except Exception:return result
  title=normalized(tree.xpath('string(//h1)') or tree.xpath('string(//title)'));result['title']=title
  lowtitle=title.lower()
@@ -92,6 +96,7 @@ def extract(body,url):
  for link in canonical+tree.xpath('//meta[@property="og:url"]/@content'):
   dest=urljoin(url,link)
   if dest!=url and urlsplit(dest).hostname==urlsplit(url).hostname and len(urlsplit(dest).path)>5:result['discovered'].append(dest)
+ continuations=continuation_links(tree,url,paywall)
  candidates=[]
  # Do not use hidden schema bodies on explicitly restricted pages.
  if not paywall:
@@ -124,7 +129,7 @@ def extract(body,url):
  standard_body=standard and any(m=='article selector: main-article' for m,_,_ in candidates)
  for method,text,anchored in candidates:
   text='\n\n'.join(line for line in text.splitlines() if line.strip() and not any(x in line.lower() for x in PROMO))
-  truncated=bool(re.search(r'(?:\.\.\.|…|read more|continue reading)\s*$',text,re.I))
+  truncated=bool(continuations) or bool(re.search(r'(?:\.\.\.|…|read more|continue reading)\s*$',text,re.I))
   empty_body_marker=any(m.startswith(('article selector','microdata')) for m,_,_ in candidates) and not any(len(t)>=100 for m,t,_ in candidates if m.startswith(('article selector','microdata')))
   if 'parser' in method and empty_body_marker:anchored=False
   # An explicit legacy Standard body is more reliable than a parser that adds
@@ -140,7 +145,7 @@ def extract(body,url):
   score=({'candidate':3,'partial':2,'missing':0}[quality],specificity,len(text))
   if score>result.get('_score',(-1,0,0)):result.update(text=text if quality!='missing' else '',quality=quality,method=method,reason=reason,_score=score)
  result.pop('_score',None);result['paywall']=paywall
- result['continuations']=continuation_links(tree,url,paywall)
+ result['continuations']=continuations
  # News listings can have many Article cards; no matching headline/body means no success.
  if not schemas and not paywall and len(tree.xpath('//article'))>8 and not any(c['quality']=='candidate' and c['method'].startswith(('article selector','microdata','structured')) for c in result['candidates']):
   result.update(quality='missing',text='',reason='Listing page, not a single article')

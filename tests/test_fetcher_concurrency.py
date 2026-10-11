@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 """Fetcher overlap, robots-policy propagation and real network accounting."""
 import sys
 import threading
@@ -76,7 +77,7 @@ class FetcherConcurrencyTests(unittest.TestCase):
    def get(self,*a,**kw):
     entered.wait(3)
     if not release.wait(3):raise AssertionError('Fixture did not release downloads')
-    return nullcontext(SimpleNamespace(status_code=200,headers={},iter_content=lambda _:[b'article']))
+    return nullcontext(SimpleNamespace(status_code=200,headers={},raw=SimpleNamespace(read1=Mock(side_effect=[b'article',b'']),shutdown=lambda:None)))
   def request():
    try:fetcher.one('https://example.org/article')
    except BaseException as exc:errors.append(exc)

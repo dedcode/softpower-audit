@@ -1328,3 +1328,62 @@ their compressed texts, raw HTML hashes and linked-source provenance verified.
 These are observed recovery results, not a promise that all remaining URLs are
 available or that the initial rate will persist. Private launch, migration and
 verification proof is under `diagnostics/linked-original/` in the run prefix.
+
+### Extraction and infrastructure safeguards (2026-10-11)
+
+An explicit article continuation now makes even a long teaser incomplete.
+Related links in navigation, sidebars, footers and related-story containers
+are excluded. Full-text recovery still requires matching the original article's
+headline or opening text, and keeps both publications' raw evidence.
+HTML is decoded once before parsing, preserving UTF-8 and Windows-1252 accents.
+Pending checkpoints made with an older extractor validate their selected stored
+body first. Reanalysis replaces that body's old assessment even when corrected
+text is shorter or the body is demoted to partial. An unreadable old candidate
+cannot be accepted as full text. Completed results are not reprocessed.
+
+Streamed HTTP bodies have a 40-second deadline. A watchdog interrupts stalled
+socket reads, including slow streams and incomplete compressed responses;
+operator cancellation interrupts the same read. The response byte limit and
+pooled HTTP connections are retained. Connect and header reads keep the existing
+Requests timeouts; the watchdog bounds the response-body phase.
+
+A failed distributed worker records whether its failure is an identifiable
+temporary infrastructure error. Only explicit SDK retry wrappers inherit their
+cause's classification; unrelated exception context cannot turn ownership or
+checkpoint failures into retryable outages. A failed cohort is eligible only
+when all latest task attempts have stopped safely and every failed task has this
+marker. The continuation coordinator confirms Cloud Run termination, checks the
+exact run/execution progress snapshot, and waits for the previous guard to expire
+naturally. It permits at most three extra executions with 5-, 10- and 15-minute
+backoffs. It never repeats an uncertain launch request or overrides another
+owner's guard. Operator stops, budget pauses and unmarked failures stop normally.
+A resumed worker checks cumulative article/byte budgets before dispatching work.
+
+`verify_infrastructure.py` is an isolated cloud fixture, restricted to
+`verify-infrastructure-*` run IDs. It writes only private verification objects
+and requests no articles. Temporary, permanent and repeated failure modes verify
+successful recovery, refusal to restart and the three-restart cap; a STOP marker
+verifies no worker is launched. Verification runs use two-second backoff steps.
+
+Before recovering a run whose tasks had native retries, the controller also
+requires the latest failed task reports to identify the final configured native
+attempt. An earlier attempt's marker cannot authorize a restart after a later
+unreported crash. Cancelled Cloud Run executions never restart automatically.
+
+All 476 regression tests pass. The built cloud image independently verified
+UTF-8 text, long-teaser demotion and stalled, slow and compressed body reads;
+all three reads stopped at 0.251 seconds for a 0.25-second test deadline.
+Cloud controller pilots verified successful temporary-failure recovery,
+refusal to retry permanent failures, exactly three restarts for repeated
+failures, zero launches after STOP, refusal to restart a cancelled execution,
+and both rejection of stale native-attempt reports and acceptance of current
+final-attempt reports. The verification jobs request no publisher articles.
+
+The deployed image is
+`sha256:374929a25dc4cb2fe7835a71c54612e0df578882141c335ebafda113efae1fc9`
+from Cloud Build `92188964-fe68-4036-acb5-8af684694c14`; the production controller
+is revision `000003-c5c`. Build input hashes matched the tested source before
+deployment. Worker count, article slots, resources and budgets were preserved.
+The completed Kenya run was not restarted or reprocessed: 85,993 terminal URLs,
+64,136 saved texts, 7,230 partial results, 10,313 exhausted and 4,314 failed.
+Local deployment and cloud-test proof is under `deployment-private/robustness/`.

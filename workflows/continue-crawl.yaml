@@ -4,6 +4,7 @@
 # GOOGLE_CLOUD_PROJECT_ID / GOOGLE_CLOUD_LOCATION. Input: {"run_id": "..."}.
 # The coordinator has no application-level duration or rotation count limit.
 # Cloud Workflows still has its own execution lifetime limit (one year).
+# Confirmed temporary infrastructure failures have three bounded restarts.
 main:
   params: [input]
   steps:
@@ -15,6 +16,20 @@ main:
           - project: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
           - location: ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
           - executions_finished: 0
+          - infrastructure_restarts: 0
+          - recovery_delay: 300
+          - run_failed: false
+          - can_recover: false
+          # Declare in the outer scope: variables created in an except block
+          # otherwise disappear when execution jumps out of that block.
+          - execution_name: ""
+    - verificationDelay:
+        switch:
+          - condition: ${text.match_regex(run_id, "^verify-infrastructure-")}
+            steps:
+              - setVerificationDelay:
+                  assign:
+                    - recovery_delay: 2
     - validateConfiguration:
         switch:
           - condition: ${not text.match_regex(run_id, "^[A-Za-z0-9][A-Za-z0-9._-]*$") or bucket == "" or job == ""}
@@ -61,9 +76,17 @@ main:
         except:
           as: error
           steps:
-            - reportExecutionFailure:
-                # Do not relaunch a failed/uncertain execution. Preserve the
-                # error so the coordinator is FAILED in Cloud Workflows too.
+            - classifyExecutionFailure:
+                switch:
+                  - condition: ${"OperationError" in default(map.get(error, "tags"), []) and map.get(error, ["operation", "done"]) == true and get_type(map.get(error, ["operation", "metadata", "name"])) == "string"}
+                    steps:
+                      - failedExecutionIdentity:
+                          assign:
+                            - execution_name: ${error.operation.metadata.name}
+                            - run_failed: true
+                          next: validateExecutionName
+            - ambiguousFailure:
+                # Never repeat a timed-out/uncertain launch POST.
                 raise: ${error}
     - executionResult:
         assign:
@@ -71,12 +94,30 @@ main:
           # resolved Execution representation; reject an Operation name below.
           - execution: ${default(map.get(run_result, "response"), run_result)}
           - execution_name: ${default(map.get(execution, "name"), "")}
+          - run_failed: false
     - validateExecutionName:
         switch:
-          - condition: ${not text.match_regex(execution_name, "/executions/[^/]+$")}
+          - condition: ${not text.match_regex(execution_name, "^projects/[^/]+/locations/" + location + "/jobs/" + job + "/executions/[^/]+$")}
             steps:
               - invalidExecution:
                   raise: "Cloud Run did not return a completed Execution resource"
+    - confirmExecution:
+        call: googleapis.run.v2.projects.locations.jobs.executions.get
+        args:
+          name: ${execution_name}
+        result: confirmed_execution
+    - rejectCancelledExecution:
+        switch:
+          - condition: ${default(map.get(confirmed_execution, "cancelledCount"), 0) > 0}
+            steps:
+              - cancelledExecution:
+                  raise: "Execution was cancelled; refusing automatic restart"
+    - validateTermination:
+        switch:
+          - condition: ${map.get(confirmed_execution, "completionTime") == null or default(map.get(confirmed_execution, "runningCount"), 0) != 0 or not text.match_regex(execution_name, "/locations/" + location + "/jobs/" + job + "/executions/[^/]+$")}
+            steps:
+              - uncertainTermination:
+                  raise: "Execution termination/identity is not confirmed; refusing restart"
     - executionIdentity:
         assign:
           - execution_parts: ${text.split(execution_name, "/")}
@@ -99,6 +140,7 @@ main:
           - summary: ${progress_response.body}
           - state: ${map.get(summary, "state")}
           - pending: ${map.get(summary, "pending")}
+          - can_recover: ${map.get(summary, "infrastructure_recoverable") == true}
     - validateProgress:
         switch:
           - condition: ${map.get(summary, "run_id") != run_id or map.get(summary, "execution") != execution_id}
@@ -121,9 +163,51 @@ main:
         switch:
           - condition: ${state == "continuing" and pending > 0}
             next: checkStop
+    - confirmFinalNativeAttempts:
+        switch:
+          - condition: ${run_failed and can_recover and default(map.get(confirmed_execution, ["template", "maxRetries"]), 0) > 0}
+            steps:
+              - requireAllTaskReports:
+                  switch:
+                    - condition: ${get_type(map.get(summary, "workers")) != "list" or len(default(map.get(summary, "workers"), [])) != confirmed_execution.taskCount}
+                      steps:
+                        - missingNativeReports:
+                            assign:
+                              - can_recover: false
+              - inspectNativeReports:
+                  for:
+                    value: peer
+                    in: ${default(map.get(summary, "workers"), [])}
+                    steps:
+                      - rejectEarlierAttempt:
+                          switch:
+                            - condition: ${map.get(peer, "state") == "failed" and map.get(peer, "task_attempt") != confirmed_execution.template.maxRetries}
+                              steps:
+                                - staleNativeReport:
+                                    assign:
+                                      - can_recover: false
+    - recoverConfirmedInfrastructureFailure:
+        switch:
+          - condition: ${run_failed and state == "failed" and can_recover and pending > 0 and infrastructure_restarts < 3}
+            steps:
+              - countRecovery:
+                  assign:
+                    - infrastructure_restarts: ${infrastructure_restarts + 1}
+              - recoveryBackoff:
+                  call: sys.sleep
+                  args:
+                    seconds: ${recovery_delay * infrastructure_restarts}
+              - awaitOldGuard:
+                  call: wait_for_old_guard
+                  args:
+                    bucket: ${bucket}
+                    run_id: ${run_id}
+                    execution_id: ${execution_id}
+              - resumeConfirmedFailure:
+                  next: checkStop
     - finished:
         # Operator pauses, budget pauses, recovery failures, and unknown states
-        # all stop here. A failed run must never become an automatic restart.
+        # all stop here. Unmarked failures must never restart automatically.
         return:
           run_id: ${run_id}
           state: ${state}
@@ -132,6 +216,7 @@ main:
           pending: ${pending}
           error: ${map.get(summary, "error")}
           executions_finished: ${executions_finished}
+          infrastructure_restarts: ${infrastructure_restarts}
 
 object_exists:
   params: [bucket, object_name]
@@ -159,3 +244,54 @@ object_exists:
                 raise: ${error}
     - found:
         return: true
+
+# A confirmed terminal execution cannot make further requests. Its old guard
+# still expires naturally; a replacement then uses the worker's ordinary CAS.
+# Never delete it or override a handover/new owner's guard.
+wait_for_old_guard:
+  params: [bucket, run_id, execution_id]
+  steps:
+    - guardDeadline:
+        assign:
+          - deadline: ${sys.now() + 900}
+    - readGuard:
+        try:
+          call: http.get
+          args:
+            url: ${"https://storage.googleapis.com/storage/v1/b/" + text.url_encode(bucket) + "/o/control%2Fworker-lease.json"}
+            query:
+              alt: media
+            auth:
+              type: OAuth2
+          result: guard_response
+        retry: ${http.default_retry}
+        except:
+          as: error
+          steps:
+            - absentGuard:
+                switch:
+                  - condition: ${map.get(error, "code") == 404}
+                    steps:
+                      - noGuard:
+                          return: null
+            - unreadableGuard:
+                raise: ${error}
+    - validateGuard:
+        switch:
+          - condition: ${guard_response.body.run_id != run_id or guard_response.body.execution != execution_id or guard_response.body.owner != execution_id or map.get(guard_response.body, "handover_id") != null}
+            steps:
+              - changedGuard:
+                  raise: "Crawler guard changed owner; refusing automatic restart"
+          - condition: ${time.parse(guard_response.body.expires_at) <= sys.now()}
+            steps:
+              - expiredGuard:
+                  return: null
+          - condition: ${sys.now() >= deadline}
+            steps:
+              - guardWaitExpired:
+                  raise: "Terminal crawler guard did not expire; refusing automatic restart"
+    - waitForExpiry:
+        call: sys.sleep
+        args:
+          seconds: 30
+        next: readGuard

@@ -74,4 +74,12 @@ class ContinuationTests(unittest.TestCase):
   f=Pipeline(Bucket(),'run',max_attempts=1);got={'status':'retrieved','http_status':200,'raw_uri':'gs://test/original','final_url':'https://origin.example/story','attempts':[]}
   with patch.object(Fetcher,'fetch',return_value=got),patch.object(f,'read',side_effect=lambda uri:teaser() if uri.endswith('preview') else full()),patch('pipeline.extract',side_effect=extract):r=f.fetch_phase(item,'run','KE',phase='archive',checkpoint=c)
   self.assertEqual(r['status'],'saved');self.assertEqual(r['text_origin'],'linked_original')
+ def test_old_long_teaser_candidate_is_demoted_and_original_recovered(self):
+  item,c=self.checkpoint('publisher');body=teaser().replace(LEAD.encode(),(LEAD*8).encode())
+  old=extract(body,item['url']);old.update(quality='candidate',text=LEAD*8,raw_uri='gs://test/preview',url=item['url'],digest='old',http_status=200)
+  c['best']=old;f=Pipeline(Bucket(),'run',max_attempts=1)
+  got={'status':'retrieved','http_status':200,'raw_uri':'gs://test/original','final_url':'https://origin.example/story','attempts':[]}
+  with patch.object(Fetcher,'fetch',return_value=got) as fetch,patch.object(f,'read',side_effect=lambda uri:body if uri.endswith('preview') else full()),patch('pipeline.extract',side_effect=extract):
+   r=f.fetch_phase(item,'run','KE',phase='publisher',checkpoint=c)
+  self.assertEqual(fetch.call_count,1);self.assertEqual(r['status'],'saved');self.assertEqual(r['text_origin'],'linked_original');self.assertEqual(r['final_url'],'https://origin.example/story')
 if __name__=='__main__':unittest.main()

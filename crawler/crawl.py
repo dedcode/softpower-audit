@@ -272,12 +272,10 @@ class Fetcher:
                     status=r.status_code
                     if r.status_code in (429,503) or (r.status_code in (401,403) and r.headers.get('Retry-After')):
                         self.defer_host(p.hostname,retry_seconds(r.headers.get('Retry-After'),1))
-                    data=bytearray();oversize=False;began=time.monotonic()
-                    for chunk in r.iter_content(65536):
-                        data.extend(chunk)
-                        if len(data)>MAX_BODY or time.monotonic()-began>40:oversize=True;break
+                    from http_body import read_body
+                    data,oversize=read_body(r,MAX_BODY,cancelled=self.abort_event.is_set)
                     completed=True
-                    return r.status_code,requests.structures.CaseInsensitiveDict(r.headers),bytes(data[:MAX_BODY]),oversize
+                    return r.status_code,requests.structures.CaseInsensitiveDict(r.headers),data,oversize
             except (requests.RequestException,socket.gaierror,TimeoutError) as exc:
                 failure_kind=transport_kind(exc)
                 self.pause_archive_service(p.hostname);raise

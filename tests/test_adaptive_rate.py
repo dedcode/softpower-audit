@@ -349,7 +349,7 @@ class AdaptiveRateTests(unittest.TestCase):
         from types import SimpleNamespace
         fetcher = Fetcher(Bucket(), 'pilot', delay=1, host_coordinator=self.coordinator)
         response = SimpleNamespace(status_code=403, headers={'Retry-After': '600'},
-                                   iter_content=lambda _: [b'denied'])
+                                   raw=SimpleNamespace(read1=__import__('unittest.mock',fromlist=['Mock']).Mock(side_effect=[b'denied',b'']),shutdown=lambda:None))
         with patch('crawl.public_url', side_effect=urlsplit), patch('crawl.requests.Session') as session:
             session.return_value.get.return_value = nullcontext(response)
             fetcher.one('https://example.org/story')

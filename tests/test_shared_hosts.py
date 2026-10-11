@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 """Distributed host coordination, tested without network or cloud credentials."""
 import copy
 import sys
@@ -394,7 +395,7 @@ class SharedHostTests(unittest.TestCase):
                 owner.clock.advance(.5)
                 status, headers = replies.pop(0)
                 return nullcontext(SimpleNamespace(status_code=status, headers=headers,
-                    iter_content=lambda _: [b'article']))
+                    raw=SimpleNamespace(read1=Mock(side_effect=[b'article',b'']),shutdown=lambda:None)))
 
         with patch('crawl.requests.Session', Session), patch('crawl.public_url', side_effect=urlsplit), \
              patch('crawl.time.monotonic', side_effect=self.clock.now):
