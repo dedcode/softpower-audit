@@ -1,6 +1,8 @@
 # Article collection pipeline
 
-Status: the full Kenya collection is running (85,993 URLs). The sections below include historical pilot and deployment notes; the latest concurrency configuration is described at the end. Public progress: https://djelleldifallah.com/softpower-audit/extraction-status/?country=KE .
+Status: the full Chile collection is running (91,681 URLs from 269 websites, 2015–2025). Kenya's 85,993-URL collection has finished. The sections below include historical pilot and deployment notes. Public progress: https://djelleldifallah.com/softpower-audit/extraction-status/?country=CI .
+
+Chile run `ci-full-20261011-034158` uses the complete cached URL list filtered to GDELT's estimated publisher country `CI`, with one instance and 48 article slots. Its input references are loaded into `citygraph.softpower_crawl.crawl_inputs`; raw bodies and texts remain private in Cloud Storage. The verified extraction image, automatic continuation, memory safeguards, 40 GiB response budget and 300,000-attempt budget are retained, with no application runtime cutoff. Startup verification confirmed 56 full texts saved and 45 active URLs. Launch and queue proofs are under `deployment-private/chile/`.
 
 The worker accepts a country code, date range, source table and resource limits. Kenya is the first input, not a special case in the crawler. Source selection uses GDELT's estimated publisher country. It does not select articles merely because Kenya appears in their text.
 
