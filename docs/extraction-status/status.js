@@ -1,8 +1,10 @@
 'use strict';
 const $=id=>document.getElementById(id),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=new Intl.NumberFormat('en');
 const candidate=new URLSearchParams(location.search).get('country')||'KE',country=/^[A-Z]{2}$/.test(candidate)?candidate:'KE';let busy=false;
+const countryName={KE:'Kenya',CI:'Chile',RP:'Philippines'}[country]||country;
+for(const link of document.querySelectorAll('header a'))link.href='../?country='+country;
 function render(d){
- $('title').textContent='Article collection · '+(country==='KE'?'Kenya':country);
+ $('title').textContent='Article collection · '+countryName;
  if(d.state==='not_started'){$('run').textContent='No collection has started.';return;}
  $('details').hidden=false;$('run').textContent=d.phase==='pilot'?`${fmt.format(d.total)}-URL pilot`:`${fmt.format(d.total)} URLs · ${fmt.format((d.domains||[]).length)} websites`;
  const c=d.counts||{},success=c.saved||0,partial=c.partial||0,failed=(c.failed||0)+(c.exhausted||0),finished=success+partial+failed,remaining=Math.max(0,(d.total||0)-finished);
