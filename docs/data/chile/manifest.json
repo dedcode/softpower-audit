@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "country": "CI",
+  "table": "citygraph.softpower.china_articles",
+  "start": "2015-01-01",
+  "end": "2025-12-31",
+  "rows": 112838,
+  "unique_urls": 112741,
+  "websites": 298,
+  "gdelt_rows": 91772,
+  "gdelt_unique_urls": 91681,
+  "parts": [
+    {
+      "json": "articles-495375cb14dd.json",
+      "gzip": "articles-495375cb14dd.json.gz",
+      "rows": 21933,
+      "sha256": "495375cb14dd6b7045049229e364bf80413edc430d67d7cbbc1af478bf314385",
+      "json_bytes": 4194436,
+      "gzip_bytes": 953849
+    },
+    {
+      "json": "articles-834fdfc66a78.json",
+      "gzip": "articles-834fdfc66a78.json.gz",
+      "rows": 20620,
+      "sha256": "834fdfc66a78f499758c8e026142b80a16fbd576265b73f9735d651b3f47601a",
+      "json_bytes": 4194330,
+      "gzip_bytes": 1022033
+    },
+    {
+      "json": "articles-b3e8ddb41eea.json",
+      "gzip": "articles-b3e8ddb41eea.json.gz",
+      "rows": 21187,
+      "sha256": "b3e8ddb41eea5d72a844ac0c8923b047dc5a18855f890a50218411ff17ea0e8a",
+      "json_bytes": 4194402,
+      "gzip_bytes": 908547
+    },
+    {
+      "json": "articles-b6843901d296.json",
+      "gzip": "articles-b6843901d296.json.gz",
+      "rows": 20607,
+      "sha256": "b6843901d29698c525b47567f932f34457286c41b8449aa289049d01c0109b3a",
+      "json_bytes": 4194224,
+      "gzip_bytes": 904019
+    },
+    {
+      "json": "articles-16ef85b8c8fb.json",
+      "gzip": "articles-16ef85b8c8fb.json.gz",
+      "rows": 20706,
+      "sha256": "16ef85b8c8fbcbc5cce1b316ab1a07d8c2e69166c13b42cd908a4185c030495e",
+      "json_bytes": 4194321,
+      "gzip_bytes": 904425
+    },
+    {
+      "json": "articles-31cb796028c9.json",
+      "gzip": "articles-31cb796028c9.json.gz",
+      "rows": 7785,
+      "sha256": "31cb796028c98d4d94743ce121c36f18f4119a2a58dca701edd300e9c9b2000f",
+      "json_bytes": 1587696,
+      "gzip_bytes": 350152
+    }
+  ],
+  "job_id": "63e7344e-e923-4b33-a059-e987fe7ea0b8",
+  "bytes_billed": 94768201728
+}

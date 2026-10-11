@@ -85,3 +85,26 @@ node tests/test_kenya_dates.js
 node tests/test_audit.js
 node --check docs/browser.js
 ```
+
+## Cached country browsing
+
+The source-country selector offers Kenya, Chile and the Philippines. All three
+browse complete static exports of the existing China article table for 2015–2025;
+changing countries, dates, website-origin rules or geographic filters does not
+call the query API. These caches contain article links and location evidence,
+not crawled full texts. Adding these options does not launch a crawler.
+
+`scripts/build_country_caches.py` exports Chile (`CI`) and the Philippines (`RP`)
+in one parameterized, dry-run bounded BigQuery query. Every matching country/day/
+URL is retained, including GDELT-origin and ccTLD-origin candidates. Manifests
+record exact row counts, distinct URLs, query identity and billed bytes. Parts
+are bounded to about 4 MiB before gzip, named by content hash and validated against
+the BigQuery result count; there is no row limit. Both origin schemes and the
+local-place filter use GDELT country codes rather than ISO codes. The existing
+Kenya export remains unchanged.
+
+The browser loads the selected country's compressed parts, stores them in the
+browser cache and deduplicates URLs after filtering daily evidence. Without gzip
+stream support it uses the corresponding JSON files. Failures are retriable;
+there is no fallback to a paid API query. Check with `node tests/test_country_caches.js`
+and `node tests/test_kenya_cache.js`.
