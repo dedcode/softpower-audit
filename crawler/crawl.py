@@ -124,6 +124,27 @@ class Fetcher:
         if self.host_coordinator is None:return None
         with self.lock:delays={host:self.robots_delays[host] for host in hosts if host in self.robots_delays}
         return self.host_coordinator.availability(hosts,delay=self.delay,robots_delays=delays)
+    def archive_dispatch_availability(self):
+        """Advisory service health; spacing/full permits are not an outage.
+
+        Paused services are excluded before claiming articles. Snapshot work,
+        availability lookups and local reanalysis can therefore run separately.
+        Actual downloads still acquire their normal shared hostname permits.
+        """
+        from shared_hosts import Admission
+        self.check_running()
+        states=self.dispatch_availability(sorted(ARCHIVE_HOSTS))
+        if states is None:states={host:Admission(True) for host in ARCHIVE_HOSTS}
+        if set(states)!=ARCHIVE_HOSTS:raise RuntimeError('Archive service health is incomplete')
+        clock=time.monotonic()
+        with self.lock:
+            for host in ARCHIVE_HOSTS:
+                local=max(self.cooldowns.get(host,0)-clock,
+                          *(self.robots_failures.get(scheme+'://'+host,{}).get('expires_at',0)-clock
+                            for scheme in ('http','https')))
+                seconds=max(0.,local,states[host].cooldown_seconds)
+                if seconds:states[host]=Admission(False,seconds,seconds)
+        return states
     @contextmanager
     def network_wait(self):
         began=time.monotonic()

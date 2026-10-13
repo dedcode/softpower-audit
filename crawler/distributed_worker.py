@@ -304,7 +304,7 @@ class DistributedRun(Run):
             self.fetcher.request_context.output_scope = None
 
     def claim_available(self):
-        """Slow recovery stages get separate pools, never all article slots.
+        """Recovery borrows idle slots while retaining publisher priority.
 
         All phases remain in the same durable queue. A handoff frees a publisher
         slot immediately; it does not finish the article or consume a retry.
@@ -327,6 +327,19 @@ class DistributedRun(Run):
         # bounded independently so a slow archive cannot fill every thread.
         archive_limit = min(self.config['workers'], max(recovery_limit,
                             int(os.environ.get('CRAWL_ARCHIVE_SLOTS', '2'))))
+        archive_services = None
+        health = getattr(self.fetcher, 'archive_dispatch_availability', None)
+        if not self.verification and callable(health):
+            states = health()
+            archive_services = ['local'] + [host for host, state in states.items()
+                                            if state.cooldown_seconds <= 0]
+            paused = {host: state.cooldown_seconds for host, state in states.items()
+                      if state.cooldown_seconds > 0}
+            self.archive_scheduler = {'article_limit': archive_limit,
+                                      'ready_services': sorted(archive_services),
+                                      'pauses_seconds': paused}
+            if paused:
+                self.dispatch_retry_seconds = max(.25, min(30., min(paused.values())))
         selected = []
         # Admission here is advisory: a peer may start a request between this
         # read and execution, so the actual request still takes an atomic host
@@ -392,6 +405,8 @@ class DistributedRun(Run):
                 continue
             admission = ({'admit': admit, 'prepare_admission': prepare_admission}
                          if phase == 'publisher' and not self.verification and callable(dispatch_availability) else {})
+            if phase == 'archive' and archive_services is not None:
+                admission['archive_services'] = archive_services
             # Archive retrieval contacts archive services, not the original
             # publisher. Its global hostname permits still limit requests; the
             # publisher's per-outlet article cap must not halve an archive pool
@@ -410,7 +425,8 @@ class DistributedRun(Run):
                              for claim in [*active, *selected])
         archive_available = min(capacity, max(0, archive_limit - archive_active))
         if (archive_available and not self.verification and callable(dispatch_availability)
-                and callable(archive_first_handoff) and not readiness_disabled):
+                and callable(archive_first_handoff) and not readiness_disabled
+                and (archive_services is None or 'archive.org' in archive_services)):
             def admit_archive_first(item):
                 if readiness_disabled or item.get('url') in archive_first_ineligible:
                     return False
@@ -453,6 +469,8 @@ class DistributedRun(Run):
             network_snapshot = getattr(self.fetcher, 'network_snapshot', None)
             if callable(network_snapshot):
                 data['network'] = network_snapshot()
+            if getattr(self, 'archive_scheduler', None) is not None:
+                data['archive_scheduler'] = self.archive_scheduler
             self.lease_update()
             lost = self.queue.heartbeat(claims, worker_state=data)
             if lost:

@@ -383,11 +383,13 @@ class PhasedPipelineTests(unittest.TestCase):
    self.assertEqual(current['status'],'queued');self.assertEqual(current['next_phase'],'archive')
    self.assertEqual(current['_checkpoint']['completed_passes'],0)
    self.assertEqual(current['_checkpoint']['pipeline']['elapsed_seconds'],0.)
+   self.assertEqual(current['_checkpoint']['pipeline']['archive_service'],'web.archive.org')
    self.assertEqual(lookup.call_count,int(index==0),'Successful availability lookup is reused across claims')
    self.assertEqual(fetch.call_args.args[0]['url'],snapshot)
    self.assertEqual(sum(event['stage']=='http' for event in current['attempts']),1)
    waits=[event for event in current['attempts'] if event['stage']=='archive_service_wait']
    self.assertEqual(len(waits),1);self.assertEqual(waits[0]['waits'],index+1)
+   self.assertEqual(waits[0]['url'],snapshot)
   worker,checkpoint=self.resume(current,self.worker('service-recovered'))
   got={'status':'retrieved','attempts':[{'http_status':200}], 'http_status':200,'raw_uri':'gs://test/raw/full',
        'final_url':snapshot,'response_bytes':30,'stored_bytes':8}

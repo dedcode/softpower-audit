@@ -92,6 +92,8 @@ class Query:
                     actual = value[condition.field_path]
                     if condition.op_string == '==':
                         matches = actual == condition.value
+                    elif condition.op_string == 'in':
+                        matches = actual in condition.value
                     elif condition.op_string == '<=':
                         matches = actual <= condition.value
                     elif condition.op_string == '>':

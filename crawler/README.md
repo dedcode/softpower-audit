@@ -1389,3 +1389,44 @@ deployment. Worker count, article slots, resources and budgets were preserved.
 The completed Kenya run was not restarted or reprocessed: 85,993 terminal URLs,
 64,136 saved texts, 7,230 partial results, 10,313 exhausted and 4,314 failed.
 Local deployment and cloud-test proof is under `deployment-private/robustness/`.
+
+### Schedule archive recovery by service health (2026-10-13)
+
+Chile now allows archive recovery to borrow up to 44 of the 48 article slots.
+Publisher work keeps scheduling priority. The deployment retains one instance,
+4 CPUs, 4 GiB memory, eight simultaneous requests per archive hostname and
+one-second request spacing. Article slots include parsing and waiting; they
+are not simultaneous HTTP downloads.
+
+Unfinished archive records have an `archive_service` routing field:
+`archive.org` for availability checks, `web.archive.org` for snapshot downloads,
+and `local` for cached conclusions, stored-body reanalysis or linked-source
+recovery. Real requests keep the ordinary robots checks and hostname permits.
+An explicit service cooldown excludes its records before claims are created;
+healthy services and local recovery remain runnable. Full permits or ordinary
+spacing do not count as an outage. This avoids repeatedly loading and rewriting
+every blocked article checkpoint during a shared service pause.
+
+`scripts/provision_archive_index.py --apply` provisions the `archive_service`,
+`archive_due_at`, `__name__` index in the named Firestore database. Existing
+archive backlogs require `archive_dispatch_migration.py`, which only runs under
+a reserved handover with proof that the previous execution and coordinator have
+stopped. It validates checkpoint identities, uses conditional writes and asserts
+that all result and byte/attempt counters are preserved. New phase handoffs set
+the field automatically; input URLs and extracted article schema are unchanged.
+
+All 496 regression checks passed, including the three local Chrome fixtures.
+An isolated cloud queue confirmed 20 lookup/local records were runnable while
+snapshot downloads were paused, ten local records remained runnable during both
+service pauses, and recovery borrowed 44 slots when healthy. The fixture sent
+no publisher or archive requests. Chile's 18,967 unfinished archive records were
+indexed with all 72,649 terminal results preserved. The temporary verification
+and migration jobs were removed after their proofs were saved.
+
+The deployed image is
+`sha256:4c10bfc7d4ce4801e01a5e57312a9e332d6a84d0b83058ada425d12f32e50481`
+from build `4477b299-2d26-49f1-82d4-702b4b3177dd`. The source hashes matched the
+tested build inputs before deployment. The live worker reached 44 archive tasks;
+this is a capacity observation, not a promise of proportional speedup while
+Wayback is unavailable. Private deployment and runtime proof is under
+`deployment-private/chile/archive-dispatch/`.

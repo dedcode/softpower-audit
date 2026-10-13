@@ -112,6 +112,8 @@ class Pipeline(Fetcher):
    retry_at=float(retry_at)
    if not math.isfinite(retry_at):raise ValueError('Invalid archive service retry time')
    retry_at=max(time.time()+1,retry_at)
+   service_host=urlsplit(got.get('final_url') or got.get('url') or '').hostname
+   service_host=service_host if service_host in ('archive.org','web.archive.org') else None
    # A shared archive outage is unfinished recovery, not an article attempt.
    # Coalesce its operational waits while retaining retrieval/HTTP evidence.
    wait=next((event for event in events if event.get('stage')=='archive_service_wait'),None)
@@ -120,14 +122,15 @@ class Pipeline(Fetcher):
           url=got.get('final_url') or got.get('url'),http_attempts=copy.deepcopy(got.get('attempts',[])),
           robots_uri=got.get('robots_uri'))
    else:
-    wait.update(retry_at=retry_at,waits=wait.get('waits',1)+1,last_wait_at=now(),reason=got.get('error'))
+    wait.update(retry_at=retry_at,waits=wait.get('waits',1)+1,last_wait_at=now(),reason=got.get('error'),
+                url=got.get('final_url') or got.get('url'))
    # Waiting for a service to recover must not exhaust the per-pass work budget.
    if archive_first and publisher_unresolved:
     if publisher_retry_at is None or publisher_retry_at<=time.time():
      return publisher_handoff(False,'Archive service wait; publisher work remains unattempted')
     return handoff('archive',retry_at=min(retry_at,publisher_retry_at),elapsed_seconds=0.,
-     service_wait_until=retry_at,unresolved=True,archive_unresolved=unresolved)
-   return handoff('archive',retry_at=retry_at,elapsed_seconds=0.,service_wait_until=retry_at)
+     service_wait_until=retry_at,unresolved=True,archive_unresolved=unresolved,archive_service=service_host)
+   return handoff('archive',retry_at=retry_at,elapsed_seconds=0.,service_wait_until=retry_at,archive_service=service_host)
   def consider(body,source,raw_uri,http_status=200,method='html'):
    nonlocal best,unresolved
    try:analysis=extract(body,source)

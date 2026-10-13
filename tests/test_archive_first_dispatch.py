@@ -48,7 +48,8 @@ class ArchiveFirstIntegrationTests(unittest.TestCase):
         run.bucket = EvidenceBucket()
         run.fetcher = RetryingPipeline(run.bucket, run.run_id, max_attempts=1)
         run.fetcher.dispatch_availability = Mock(side_effect=lambda hosts: {
-            host: Admission(False, 300, 300) for host in hosts})
+            host: Admission(True) if host in ('archive.org', 'web.archive.org')
+            else Admission(False, 300, 300) for host in hosts})
         clock_offset = [0.]
         run.queue = SharedQueue(Database(), run.run_id, 'worker-a',
                                 clock=lambda: time.time() + clock_offset[0])

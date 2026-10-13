@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from google.cloud import firestore
+from archive_dispatch import archive_service, SERVICES as ARCHIVE_SERVICES
 
 SHARDS = 32
 MAX_CLAIMS = 48
@@ -254,7 +255,7 @@ class SharedQueue:
         batch.commit(timeout=60)
 
     def claim(self, limit=MAX_CLAIMS, per_outlet=4, excluded_outlets=(), inflight=None, phase='publisher',
-              admit=None, prepare_admission=None):
+              admit=None, prepare_admission=None, archive_services=None):
         """Claim up to ``limit`` URLs using a bounded indexed due_at query.
 
         ``per_outlet`` is per instance; shared HTTP pacing is enforced separately.
@@ -270,6 +271,12 @@ class SharedQueue:
         avoids one serial control read, article read and commit per article.
         """
         due_field = _due_field(phase)
+        if archive_services is not None:
+            archive_services = frozenset(archive_services)
+            if phase != 'archive' or not archive_services <= ARCHIVE_SERVICES:
+                raise ValueError('Invalid archive service selection')
+            if not archive_services:
+                return []
         if not 0 <= limit <= MAX_CLAIMS or per_outlet < 1:
             raise ValueError('Invalid claim or per-outlet limit')
         if not limit:
@@ -288,6 +295,8 @@ class SharedQueue:
         for _ in range(2):
             query = (self.articles.where(filter=firestore.FieldFilter(due_field, '<=', now))
                      .order_by(due_field).order_by('__name__').limit(page_size))
+            if archive_services is not None:
+                query = query.where(filter=firestore.FieldFilter('archive_service', 'in', sorted(archive_services)))
             if cursor is not None:
                 query = query.start_after(cursor)
             candidates = list(query.stream(timeout=30))
@@ -312,7 +321,8 @@ class SharedQueue:
             def reserve_pending():
                 if not pending:
                     return
-                batch = self._claim_batch(pending, phase, active, per_outlet)
+                options = {'archive_services': archive_services} if archive_services is not None else {}
+                batch = self._claim_batch(pending, phase, active, per_outlet, **options)
                 claims.extend(batch)
                 active.update(claim.item['outlet'] for claim in batch)
                 pending.clear()
@@ -345,7 +355,7 @@ class SharedQueue:
                 return claims
         return claims
 
-    def _claim_batch(self, candidates, phase, active, per_outlet):
+    def _claim_batch(self, candidates, phase, active, per_outlet, *, archive_services=None):
         """Read and lease at most 48 candidates in one fenced transaction."""
         if not candidates:
             return []
@@ -376,7 +386,8 @@ class SharedQueue:
                     continue
                 row = live.to_dict()
                 if (row.get('state') == 'done' or row.get('phase', 'publisher') != phase
-                        or row.get(due_field, float('inf')) > admitted_at):
+                        or row.get(due_field, float('inf')) > admitted_at
+                        or (archive_services is not None and row.get('archive_service') not in archive_services)):
                     continue
                 if row.get('state') not in ('ready', 'leased'):
                     raise RuntimeError('Unexpected article queue state')
@@ -524,6 +535,10 @@ class SharedQueue:
             row.update(state='ready', phase=next_phase, checkpoint_uri=checkpoint_uri,
                        accounted_metrics=metrics, last_handoff=handoff_identity,
                        status='queued', needs_export=False, updated_at=self.clock())
+            if next_phase == 'archive':
+                row['archive_service'] = archive_service(result.get('_checkpoint'), row['item'])
+            else:
+                row.pop('archive_service', None)
             for field in (*PHASE_DUE_FIELDS.values(), 'owner', 'claim_token'):
                 row.pop(field, None)
             row[next_due] = retry_at
