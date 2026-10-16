@@ -162,3 +162,6 @@ app.include_router(article_router)
 
 from extraction import router as extraction_router
 app.include_router(extraction_router)
+
+from downloads import router as downloads_router
+app.include_router(downloads_router)

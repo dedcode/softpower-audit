@@ -108,3 +108,27 @@ browser cache and deduplicates URLs after filtering daily evidence. Without gzip
 stream support it uses the corresponding JSON files. Failures are retriable;
 there is no fallback to a paid API query. Check with `node tests/test_country_caches.js`
 and `node tests/test_kenya_cache.js`.
+
+## Downloaded articles
+
+The audit browser's **Downloaded only** button limits websites, URL counts,
+monthly observations, and paginated results to URLs with an accepted saved or
+partial text result. Partial results are labeled in both the list and reader.
+**View downloaded article** opens `/article/`, which renders extracted text as
+plain text and retains a link to the original publisher. Dates remain GDELT
+observation dates; download availability refers to the current crawl result.
+
+`GET /downloads?country=CI` supplies a compact URL/status index. The API caches it
+and persists it under private `downloads/` objects in GCS. Initial reconciliation
+reads accepted queue metadata; updates use changed metadata with a two-minute
+overlap and count reconciliation. Unchanged collection counts reuse the index.
+`GET /downloaded-article?country=CI&url=…` resolves the current accepted result
+through Firestore, checks country/run/URL identity (including legacy JSONL batches),
+and reads bounded extracted text from GCS. Neither route uses BigQuery, recrawls
+publishers, or calls an LLM. Bucket paths and raw publisher HTML are not returned.
+
+Run `scripts/prepare_download_viewer.py --apply` to provision API permissions
+(read-only access to the crawl database and stored text, index writes only) and
+bootstrap the country indexes. The bucket remains private. Deploy the API before
+publishing the frontend. Checks: `tests/test_downloads.py` and
+`node tests/test_downloaded_filter.js`, plus the existing country cache tests.

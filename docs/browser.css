@@ -12,3 +12,5 @@
 .title-with-loading{display:flex;align-items:center;gap:14px}.title-loading{display:inline-block;width:20px;height:20px;flex:0 0 20px;border:2px solid var(--line);border-top-color:var(--teal);border-radius:50%;animation:title-spin .8s linear infinite}@keyframes title-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.title-loading{animation:none}}
 
 .main-filters .place-option{display:flex;align-items:center;gap:7px;margin-top:12px;font-size:12px;font-weight:400}.place-option input{margin:0;accent-color:var(--teal);flex-shrink:0}
+
+.filter-options .downloaded-toggle{margin-left:0}.downloaded-toggle[aria-pressed=true]{color:#fff;background:var(--teal);border-color:var(--teal)}.story-actions{display:flex;align-items:center;gap:12px;margin-top:14px}.saved-article{display:inline-block;font-size:12px;text-decoration:none;padding:7px 12px}.partial-text{font-size:11px;color:#795b20}
